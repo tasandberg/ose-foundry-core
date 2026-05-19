@@ -1,0 +1,30 @@
+{
+  // Hermetic, declaration-only build for @ose-foundry-core/types.
+  //
+  // Deliberately standalone — it does NOT extend ./tsconfig.json, which pulls
+  // in Foundry's proprietary V13 sources via the `foundry/` symlink. This
+  // config compiles ONLY the self-contained, Foundry-free src/api surface, so
+  // it builds anywhere with the repo's own TypeScript and never embeds
+  // proprietary types. The drift guard under src/api/__tests__ is excluded
+  // here (it imports the real Foundry-coupled system types) and is instead
+  // type-checked by the base tsconfig in dev/CI.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "noEmit": false,
+    "noEmitOnError": true,
+    "rootDir": "src/api",
+    "outDir": ".types-build"
+  },
+  "include": ["src/api/**/*.ts"],
+  "exclude": ["src/api/**/__tests__/**"]
+}

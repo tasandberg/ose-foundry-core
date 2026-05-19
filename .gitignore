@@ -3,9 +3,15 @@ foundryconfig.json
 foundryconfig_*.json
 ose-dev.lock
 dist
+.types-build
+dist-types
+types/index.d.ts
 .DS_Store
 .env
 .foundrycache
 foundry.zip
 foundry/
 .idea
+
+# packaging artifacts
+*.tgz
