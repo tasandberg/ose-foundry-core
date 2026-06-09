@@ -34,6 +34,8 @@ export type {
   CharacterSpells,
 } from "./character-models";
 
+export type { ClassicClassName, OseClass } from "./classes";
+
 export type {
   ItemSystemData,
   WeaponSystemData,
