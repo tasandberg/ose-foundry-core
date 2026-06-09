@@ -8,12 +8,9 @@
  * OSE replaces several `system` properties with rich helper-class instances
  * inside `prepareDerivedData()`. Two flavours are exported:
  *  - `*SystemSource` — the raw, stored shape (what `defineSchema()` persists).
- *  - `*SystemData`   — the prepared, runtime shape read off a live document
+ *  - `*SystemData` — the prepared, runtime shape read off a live document
  *                       (`scores`, `ac`/`aac`, `movement`, `encumbrance`,
  *                       `spells` swapped for their helper-class interfaces).
- *
- * @typeParam TItem - The Item type for spell lists. Defaults to `unknown`;
- * pass the League `Item` type for full fidelity.
  */
 import type {
   CharacterAC,
@@ -146,13 +143,12 @@ export interface CharacterSystemSource extends CommonActorSource {
 }
 
 /** Prepared, runtime `character.system` (what you read off a live Actor). */
-export interface CharacterSystemData<TItem = unknown>
-  extends CommonActorSource {
+export interface CharacterSystemData extends CommonActorSource {
   config: { movementAuto: boolean };
   details: CharacterDetails;
   exploration: CharacterExploration;
   scores: CharacterScores;
-  spells: CharacterSpells<TItem>;
+  spells: CharacterSpells;
   encumbrance: CharacterEncumbrance;
   ac: CharacterAC;
   aac: CharacterAC;
@@ -185,10 +181,10 @@ export interface MonsterSystemSource extends CommonActorSource {
 }
 
 /** Prepared, runtime `monster.system`. */
-export interface MonsterSystemData<TItem = unknown> extends CommonActorSource {
+export interface MonsterSystemData extends CommonActorSource {
   details: MonsterDetails;
   attacks: string;
-  spells: CharacterSpells<TItem>;
+  spells: CharacterSpells;
   encumbrance: CharacterEncumbrance;
   ac: { value: number; mod: number };
   aac: { value: number; mod: number };
@@ -196,10 +192,10 @@ export interface MonsterSystemData<TItem = unknown> extends CommonActorSource {
 }
 
 /** Discriminated map of Actor `type` → prepared `system` shape. */
-export interface ActorSystemDataByType<TItem = unknown> {
-  character: CharacterSystemData<TItem>;
-  monster: MonsterSystemData<TItem>;
+export interface ActorSystemDataByType {
+  character: CharacterSystemData;
+  monster: MonsterSystemData;
 }
 
-export type AnyActorSystemData<TItem = unknown> =
-  ActorSystemDataByType<TItem>[keyof ActorSystemDataByType<TItem>];
+export type AnyActorSystemData =
+  ActorSystemDataByType[keyof ActorSystemDataByType];

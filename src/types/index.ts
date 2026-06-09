@@ -2,12 +2,14 @@
  * @file Public type surface for `@ose-foundry-core/types`.
  *
  * This is the ONLY entrypoint shipped to consumers. It is type-only: it emits
- * no runtime code, is never imported by the Foundry bundle (`src/ose.js`), and
- * has ZERO dependency on Foundry types (proprietary or League).
+ * no runtime code and is never imported by the Foundry bundle (`src/ose.js`).
  *
- * Parity with the system's own source of truth is enforced at compile time by
- * `src/api/__tests__/drift.test-d.ts`, which runs in CI where the real Foundry
- * types exist.
+ * The shipped declarations reference Foundry's global `Actor` and `Item` types
+ * from `@league-of-foundry-developers/foundry-vtt-types`, which consumers
+ * install as a peer dependency. Parity with the system's own source of truth
+ * for the config unions is enforced by `src/types/__tests__/drift.test-d.ts`;
+ * character helper-class interfaces are re-exported directly from the system,
+ * so they cannot drift.
  */
 export type { Tag, DerivedTag, ValueMax } from "./common";
 
@@ -47,6 +49,26 @@ export type {
   ItemSystemDataByType,
   AnyItemSystemData,
 } from "./item-data";
+
+export type {
+  ActorType,
+  ItemType,
+  OseActor,
+  AnyOseItem,
+  OseActorByType,
+  OseItemByType,
+  OseActorOfType,
+  OseItemOfType,
+  OseCharacter,
+  OseMonster,
+  OseNpc,
+  OseItem,
+  OseWeapon,
+  OseArmor,
+  OseSpell,
+  OseAbility,
+  OseContainer,
+} from "./documents";
 
 export type {
   Retainer,

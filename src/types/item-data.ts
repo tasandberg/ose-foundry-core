@@ -5,6 +5,9 @@
  * `src/module/item/data-model-*.js` and the defaults in `template.json`.
  * Derived getters exposed on the live `TypeDataModel` instance (e.g.
  * `autoTags`, `cumulativeWeight`) are included as `readonly` members.
+ *
+ * `Item`-typed fields (container `contents`) reference Foundry's global `Item`
+ * type from `@league-of-foundry-developers/foundry-vtt-types` (peer dependency).
  */
 import type { Armor } from "./config-types";
 import type { DerivedTag, Tag, ValueMax } from "./common";
@@ -93,13 +96,8 @@ export interface AbilitySystemData extends DerivedTagGetters {
   tags: Tag[];
 }
 
-/**
- * `item.system` for the `container` type.
- *
- * @typeParam TItem - The contained Item type. Defaults to `unknown`; pass the
- * League `Item` type for full fidelity.
- */
-export interface ContainerSystemData<TItem = unknown>
+/** `item.system` for the `container` type. */
+export interface ContainerSystemData
   extends PhysicalItemFields,
     DerivedTagGetters {
   itemIds: string[];
@@ -107,20 +105,20 @@ export interface ContainerSystemData<TItem = unknown>
   tags: Tag[];
   equipped: boolean;
   /** Items whose `system.containerId` points at this container. */
-  readonly contents: TItem[] | null;
+  readonly contents: Item[] | null;
   readonly totalWeight: number;
 }
 
 /** Discriminated map of Item `type` → its `system` shape. */
-export interface ItemSystemDataByType<TItem = unknown> {
+export interface ItemSystemDataByType {
   item: ItemSystemData;
   weapon: WeaponSystemData;
   armor: ArmorSystemData;
   spell: SpellSystemData;
   ability: AbilitySystemData;
-  container: ContainerSystemData<TItem>;
+  container: ContainerSystemData;
 }
 
 /** Union of every Item `system` shape. */
-export type AnyItemSystemData<TItem = unknown> =
-  ItemSystemDataByType<TItem>[keyof ItemSystemDataByType<TItem>];
+export type AnyItemSystemData =
+  ItemSystemDataByType[keyof ItemSystemDataByType];

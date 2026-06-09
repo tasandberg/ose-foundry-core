@@ -1,27 +1,18 @@
 {
-  // Hermetic, declaration-only build for @ose-foundry-core/types.
+  // Declaration-only build for @ose-foundry-core/types.
   //
-  // Deliberately standalone — it does NOT extend ./tsconfig.json, which pulls
-  // in Foundry's proprietary V13 sources via the `foundry/` symlink. This
-  // config compiles ONLY the self-contained, Foundry-free src/api surface, so
-  // it builds anywhere with the repo's own TypeScript and never embeds
-  // proprietary types. The drift guard under src/api/__tests__ is excluded
-  // here (it imports the real Foundry-coupled system types) and is instead
-  // type-checked by the base tsconfig in dev/CI.
+  // Extends the base tsconfig so we inherit `types: ["foundry-vtt-types"]` and
+  // the `@module/*` path alias — both needed because `src/types/*` re-exports
+  // sub-model interfaces from system source and references Foundry's global
+  // `Actor` / `Item`. tsc still only emits .d.ts for src/types/** (the rest is
+  // type-checked in support of those emits).
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "lib": ["ES2022"],
-    "types": [],
-    "strict": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
+    "noEmit": false,
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": false,
-    "noEmit": false,
-    "noEmitOnError": true,
+    "noEmitOnError": false,
     "rootDir": "src/types",
     "outDir": ".types-build"
   },

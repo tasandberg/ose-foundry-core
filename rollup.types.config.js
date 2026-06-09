@@ -3,10 +3,10 @@
  * `dist-types/index.d.ts` for the @ose-foundry-core/types package.
  *
  * Run after `tsc -p tsconfig.types.json` (see the `build:types` script).
- * rollup-plugin-dts v4 is pinned for Rollup 2 / TypeScript 4 compatibility.
  *
- * The surface is self-contained (no Foundry imports), so the bundle has no
- * external dependencies.
+ * The shipped declarations reference Foundry's global `Actor` and `Item`
+ * types, so we emit a triple-slash directive at the top of the bundle that
+ * auto-loads the peer dependency in any consumer with a sensible TS setup.
  */
 import dts from "rollup-plugin-dts";
 
@@ -15,6 +15,10 @@ export default {
   output: {
     file: "dist-types/index.d.ts",
     format: "es",
+    banner:
+      '/// <reference types="@league-of-foundry-developers/foundry-vtt-types" />',
   },
-  plugins: [dts()],
+  // The Foundry types are a peer dependency — never inline them into our bundle.
+  external: [/foundry-vtt-types/],
+  plugins: [dts({ respectExternal: false })],
 };

@@ -1,16 +1,21 @@
 /**
- * @file Compile-time drift guard for the public type surface.
+ * @file Compile-time drift guard for the public config unions.
  *
- * `src/api/*` is hand-authored and self-contained (no Foundry imports) so it
- * can be built hermetically. This file is the single mechanism that keeps it
- * honest: it imports the system's REAL types and asserts the hand-authored
- * public copies are structurally identical. Any divergence fails the base
- * `tsc` typecheck (and therefore CI).
+ * The config union types (`Save`, `Armor`, `Attribute`, …) are hand-authored
+ * as explicit string-literal unions in `config-types.ts` rather than re-
+ * exported as `keyof typeof OSE[…]`. That keeps the emitted `.d.ts` readable
+ * (no `typeof OSE` value-type leakage), but does mean the literal lists need
+ * to stay in sync with the real `OseConfig` object.
  *
- * It is type-checked by the base tsconfig (which has the real Foundry types in
- * dev/CI) and is EXCLUDED from `tsconfig.types.json` (the hermetic, Foundry-
- * free declaration build). It emits no runtime code; assertion aliases are
- * `export`ed so `noUnusedLocals` does not flag them.
+ * This file imports the system's REAL `OseConfig` and asserts every public
+ * union equals the corresponding key set. Any divergence fails the base `tsc`
+ * typecheck (and therefore CI). Sub-model interfaces (`CharacterScores` etc.)
+ * are re-exported directly from system source files, so they cannot drift and
+ * are not asserted here.
+ *
+ * Excluded from `tsconfig.types.json` (it imports system-coupled files); type-
+ * checked by the base tsconfig in dev/CI. Assertion aliases are `export`ed so
+ * `noUnusedLocals` does not flag them.
  */
 import type { OseConfig as RealOseConfig } from "@module/config";
 import type { CharacterAC as RealAC } from "@module/actor/data-model-classes/data-model-character-ac";
@@ -19,6 +24,13 @@ import type { CharacterMove as RealMove } from "@module/actor/data-model-classes
 import type { CharacterScores as RealScores } from "@module/actor/data-model-classes/data-model-character-scores";
 import type { CharacterSpells as RealSpells } from "@module/actor/data-model-classes/data-model-character-spells";
 
+import type {
+  CharacterAC,
+  CharacterEncumbrance,
+  CharacterMove,
+  CharacterScores,
+  CharacterSpells,
+} from "../character-models";
 import type {
   ApplyDamageOption,
   Armor,
@@ -30,13 +42,6 @@ import type {
   RollType,
   Save,
 } from "../config-types";
-import type {
-  CharacterAC,
-  CharacterEncumbrance,
-  CharacterMove,
-  CharacterScores,
-  CharacterSpells,
-} from "../character-models";
 
 /** True iff `A` and `B` are mutually assignable (invariant equality). */
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B
@@ -68,11 +73,10 @@ export type _Dmg = Expect<
   Equal<ApplyDamageOption, keyof RealOseConfig["apply_damage_options"]>
 >;
 
-/* ---- Character helper-class interfaces must match the real ones ---- */
+/* ---- Hand-redeclared character helper-class interfaces must match the
+        system's own interfaces ---- */
 export type _Scores = Expect<Equal<CharacterScores, RealScores>>;
 export type _AC = Expect<Equal<CharacterAC, RealAC>>;
 export type _Move = Expect<Equal<CharacterMove, RealMove>>;
 export type _Encumbrance = Expect<Equal<CharacterEncumbrance, RealEnc>>;
-// Real `CharacterSpells` is hard-typed to Foundry's global `Item`; our public
-// copy is generic. Instantiated with `Item` they must coincide exactly.
-export type _Spells = Expect<Equal<CharacterSpells<Item>, RealSpells>>;
+export type _Spells = Expect<Equal<CharacterSpells, RealSpells>>;

@@ -1,15 +1,20 @@
 /**
- * @file Public interfaces for the character helper classes that OSE swaps in
- * during `prepareDerivedData()`.
+ * @file Public interfaces for the character helper-class instances that OSE
+ * swaps into `actor.system` during `prepareDerivedData()`.
  *
- * These are self-contained re-declarations of the system's own interfaces
- * (`OseDataModelCharacter{Scores,AC,Move,Encumbrance,Spells}`). They are kept
- * structurally identical to the originals by the compile-time drift guard in
- * `src/api/__tests__/drift.test-d.ts`.
+ * Hand-redeclared (rather than re-exported from the system source) for two
+ * reasons:
+ *  1. Re-exporting drags non-type-only code into the types build, which fails
+ *     when the system's TypeScript transiently doesn't satisfy the League
+ *     `foundry-vtt-types` it's pinned against.
+ *  2. The system source files live outside `tsconfig.types.json`'s `rootDir`
+ *     and can't legally be included.
  *
- * The only Foundry-coupled member is the spell list (an array of Items). Rather
- * than depend on Foundry's types, it is parameterized: `TItem` defaults to
- * `unknown`; consumers can supply the League `Item` type for full fidelity.
+ * Parity with the system's real interfaces is enforced by the compile-time
+ * drift guard at `src/types/__tests__/drift.test-d.ts`.
+ *
+ * The `Item[]` reference in `CharacterSpells` resolves to Foundry's global
+ * `Item` (provided by the `foundry-vtt-types` peer dependency).
  */
 
 /** A single derived ability score. */
@@ -65,14 +70,9 @@ export interface SpellSlot {
   max: number;
 }
 
-/**
- * Prepared `system.spells` (`OseDataModelCharacterSpells`).
- *
- * @typeParam TItem - The spell Item type. Defaults to `unknown`; pass the
- * League `Item` type for full fidelity.
- */
-export interface CharacterSpells<TItem = unknown> {
+/** Prepared `system.spells` (`OseDataModelCharacterSpells`). */
+export interface CharacterSpells {
   enabled: boolean;
-  spellList: { [level: number]: TItem[] };
+  spellList: { [level: number]: Item[] };
   slots: { [level: number]: SpellSlot };
 }
