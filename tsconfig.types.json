@@ -22,9 +22,9 @@
     "declarationMap": false,
     "noEmit": false,
     "noEmitOnError": true,
-    "rootDir": "src/api",
+    "rootDir": "src/types",
     "outDir": ".types-build"
   },
-  "include": ["src/api/**/*.ts"],
-  "exclude": ["src/api/**/__tests__/**"]
+  "include": ["src/types/**/*.ts"],
+  "exclude": ["src/types/**/__tests__/**"]
 }

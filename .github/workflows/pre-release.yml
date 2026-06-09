@@ -91,7 +91,7 @@ jobs:
       - name: Stamp types package version
         uses: microsoft/variable-substitution@v1
         with:
-          files: "types/package.json"
+          files: "packages/types/package.json"
         env:
           version: ${{ github.ref_name }}
 
@@ -99,6 +99,6 @@ jobs:
         run: npm run build:types
 
       - name: Publish @ose-foundry-core/types (pre-release)
-        run: npm publish ./types --tag next --access public
+        run: npm publish ./packages/types --tag next --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

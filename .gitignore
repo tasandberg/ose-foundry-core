@@ -5,7 +5,7 @@ ose-dev.lock
 dist
 .types-build
 dist-types
-types/index.d.ts
+packages/types/index.d.ts
 .DS_Store
 .env
 .foundrycache

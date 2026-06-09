@@ -12,12 +12,12 @@
  * free declaration build). It emits no runtime code; assertion aliases are
  * `export`ed so `noUnusedLocals` does not flag them.
  */
-import type { OseConfig as RealOseConfig } from "../../module/config";
-import type { CharacterAC as RealAC } from "../../module/actor/data-model-classes/data-model-character-ac";
-import type { CharacterEncumbrance as RealEnc } from "../../module/actor/data-model-classes/data-model-character-encumbrance";
-import type { CharacterMove as RealMove } from "../../module/actor/data-model-classes/data-model-character-move";
-import type { CharacterScores as RealScores } from "../../module/actor/data-model-classes/data-model-character-scores";
-import type { CharacterSpells as RealSpells } from "../../module/actor/data-model-classes/data-model-character-spells";
+import type { OseConfig as RealOseConfig } from "@module/config";
+import type { CharacterAC as RealAC } from "@module/actor/data-model-classes/data-model-character-ac";
+import type { CharacterEncumbrance as RealEnc } from "@module/actor/data-model-classes/data-model-character-encumbrance";
+import type { CharacterMove as RealMove } from "@module/actor/data-model-classes/data-model-character-move";
+import type { CharacterScores as RealScores } from "@module/actor/data-model-classes/data-model-character-scores";
+import type { CharacterSpells as RealSpells } from "@module/actor/data-model-classes/data-model-character-spells";
 
 import type {
   ApplyDamageOption,
