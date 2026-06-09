@@ -43,12 +43,14 @@ import type {
   Save,
 } from "../config-types";
 
-/** True iff `A` and `B` are mutually assignable (invariant equality). */
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B
-  ? 1
-  : 2
-  ? true
-  : false;
+/**
+ * Bidirectional structural assignability — `A` and `B` describe the same shape.
+ *
+ * Stricter "function-overload" Equal<> trips on syntactically-different but
+ * structurally-identical types (e.g. `{ a: 1; b: 2 }` vs `{ a: 1 } & { b: 2 }`),
+ * which is exactly the kind of equivalence we DO want to accept for data drift.
+ */
+type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 type Expect<T extends true> = T;
 

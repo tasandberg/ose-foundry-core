@@ -35,7 +35,7 @@ export const OSE = {
     return `${this.systemRoot}/assets`;
   },
   get encumbrance() {
-    const variant = game.settings.get(game.system.id, "encumbranceOption");
+    const variant = game.settings.get(game.system.id, "encumbranceOption") as keyof typeof OSE.encumbranceOptions;
     return this.encumbranceOptions[variant] || this.encumbranceOptions.disabled;
   },
   classes: {
