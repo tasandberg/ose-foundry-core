@@ -7,14 +7,7 @@
 import type { Attribute } from "../module/config";
 
 /** The seven core classes from classic-fantasy OSE. */
-export type ClassicClassName =
-  | "Cleric"
-  | "Dwarf"
-  | "Elf"
-  | "Fighter"
-  | "Halfling"
-  | "Magic-User"
-  | "Thief";
+export type ClassicClassName = "Cleric" | "Dwarf" | "Elf" | "Fighter" | "Halfling" | "Magic-User" | "Thief";
 
 /** Definition shape for an OSE character class. */
 export type OseClass = {

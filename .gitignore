@@ -4,7 +4,6 @@ foundryconfig_*.json
 ose-dev.lock
 dist
 .types-build
-dist-types
 packages/types/index.d.ts
 .DS_Store
 .env

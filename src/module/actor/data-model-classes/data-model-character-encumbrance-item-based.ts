@@ -83,7 +83,7 @@ export default class OseDataModelCharacterEncumbranceItemBased
   constructor(max = 16, items: Item[] = [], options: { scores?: { str?: { mod?: number } } } = {}) {
     super(OseDataModelCharacterEncumbranceItemBased.type, max);
     if (game.settings.get(game.system.id, "encumbranceItemStrengthMod")) {
-      this.#weightMod = (options.scores?.str?.mod ?? 0) > 0 ? options.scores!.str!.mod! : 0;
+      this.#weightMod = Math.max(0, options.scores?.str?.mod ?? 0);
     } else {
       this.#weightMod = 0;
     }
@@ -144,7 +144,6 @@ export default class OseDataModelCharacterEncumbranceItemBased
 
   static defineSchema() {
     // @ts-expect-error League v13 client/data/fields shadows common (only declares ShaderField)
-
     const { ArrayField, BooleanField, NumberField, SchemaField, StringField } = foundry.data.fields;
 
     return new SchemaField({
@@ -233,12 +232,10 @@ export default class OseDataModelCharacterEncumbranceItemBased
   }
 
   get equippedPct() {
-    // @ts-expect-error League v13 primitives/math globals not re-exported via main entry
     return Math.clamp((this.#equippedWeight / this.#equippedMax) * 100, 0, 100);
   }
 
   get packedPct() {
-    // @ts-expect-error League v13 primitives/math globals not re-exported via main entry
     return Math.clamp(((this.#packedWeight - this.#weightMod) / this.#packedMax) * 100, 0, 100);
   }
 

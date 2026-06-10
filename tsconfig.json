@@ -33,8 +33,7 @@
     "paths": {
       "@client/*": ["./foundry/client/*"],
       "@common/*": ["./foundry/common/*"],
-      "@setup/*": ["./foundry/setup/*"],
-      "@module/*": ["./src/module/*"]
+      "@setup/*": ["./foundry/setup/*"]
     }
   },
   "include": ["src/**/*.js", "src/**/*.ts", "src/**/*.d.ts"]

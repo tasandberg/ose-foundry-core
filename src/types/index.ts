@@ -7,7 +7,7 @@
  * transcribed; nothing can drift from the system because everything IS the
  * system.
  *
- * Uses relative paths (not the `@module/*` alias) so rollup-plugin-dts
+ * Uses relative paths (not a tsconfig path alias) so rollup-plugin-dts
  * inlines the symbols at build time rather than leaving the alias as an
  * external import in the shipped declarations.
  *
@@ -16,23 +16,23 @@
  * whatever the system explicitly `export`s becomes eligible for re-export
  * here.
  */
+
+export type { CharacterAC } from "../module/actor/data-model-classes/data-model-character-ac";
+export type { CharacterEncumbrance } from "../module/actor/data-model-classes/data-model-character-encumbrance";
+export type { CharacterMove } from "../module/actor/data-model-classes/data-model-character-move";
+export type { CharacterScores } from "../module/actor/data-model-classes/data-model-character-scores";
+export type { CharacterSpells } from "../module/actor/data-model-classes/data-model-character-spells";
 export type {
-  OseConfig,
+  ApplyDamageOption,
+  Armor,
   Attribute,
+  Color,
+  EncumbranceOption,
   ExplorationSkill,
+  InventoryItemTag,
+  OseConfig,
   RollType,
   Save,
-  Armor,
-  Color,
-  InventoryItemTag,
-  EncumbranceOption,
-  ApplyDamageOption,
 } from "../module/config";
-
-export type { CharacterScores } from "../module/actor/data-model-classes/data-model-character-scores";
-export type { CharacterAC } from "../module/actor/data-model-classes/data-model-character-ac";
-export type { CharacterMove } from "../module/actor/data-model-classes/data-model-character-move";
-export type { CharacterEncumbrance } from "../module/actor/data-model-classes/data-model-character-encumbrance";
-export type { CharacterSpells } from "../module/actor/data-model-classes/data-model-character-spells";
 
 export type { ClassicClassName, OseClass } from "./classes";

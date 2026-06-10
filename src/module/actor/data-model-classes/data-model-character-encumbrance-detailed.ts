@@ -54,7 +54,6 @@ export default class OseDataModelCharacterEncumbranceDetailed
 
   static defineSchema() {
     // @ts-expect-error League v13 client/data/fields shadows common (only declares ShaderField)
-
     const { ArrayField, BooleanField, NumberField, SchemaField, StringField } = foundry.data.fields;
 
     return new SchemaField({
