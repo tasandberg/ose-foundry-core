@@ -46,6 +46,7 @@ export default class OseDataModelCharacterEncumbrance implements CharacterEncumb
   }
 
   static defineSchema() {
+    // @ts-expect-error League v13 client/data/fields shadows common (only declares ShaderField)
     const { ArrayField, BooleanField, NumberField, SchemaField, StringField } = foundry.data.fields;
 
     return new SchemaField({
@@ -74,6 +75,7 @@ export default class OseDataModelCharacterEncumbrance implements CharacterEncumb
   }
 
   get pct() {
+    // @ts-expect-error League v13 primitives/math globals not re-exported via main entry
     return Math.clamp((this.value / this.max) * 100, 0, 100);
   }
 
@@ -96,10 +98,6 @@ export default class OseDataModelCharacterEncumbrance implements CharacterEncumb
 
   set max(value) {
     this.#max = value;
-  }
-
-  get #delta() {
-    return this.max - OseDataModelCharacterEncumbrance.baseEncumbranceCap;
   }
 
   get atThirdBreakpoint() {

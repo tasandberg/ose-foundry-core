@@ -1,8 +1,6 @@
 /**
  * @file A class representing the character's ability to move, depending on encumbrance state
  */
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-expect-error
 import OseDataModelCharacterEncumbrance from "./data-model-character-encumbrance";
 
 export interface CharacterMove {

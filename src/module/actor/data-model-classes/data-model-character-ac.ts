@@ -2,7 +2,7 @@
  * @file A class to handle the nested AC/AAC props on OseDataModelCharacter.
  */
 
-interface CharacterAC {
+export interface CharacterAC {
   base: number;
   naked: number;
   shield: number;

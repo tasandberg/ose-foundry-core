@@ -1,0 +1,19 @@
+{
+  // Declaration-only build for @ose-foundry-core/types.
+  //
+  // Extends the base tsconfig (inheriting `types: ["foundry-vtt-types"]` and
+  // the `@module/*` path alias). rootDir is `src` so we can re-export from
+  // `@module/*`; rollup-plugin-dts tree-shakes from src/types/index.d.ts into
+  // a single bundled .d.ts in dist-types/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "noEmitOnError": false,
+    "rootDir": "src",
+    "outDir": ".types-build"
+  },
+  "include": ["src/types/**/*.ts", "src/global.d.ts"]
+}

@@ -78,3 +78,27 @@ jobs:
           artifacts: "./system.json, ./system.zip"
           tag: ${{ github.ref_name }}
           bodyfile: release_notes.txt
+
+      # --- Publish the @ose-foundry-core/types companion package (next tag) ---
+      # Requires an NPM_TOKEN repo secret with publish rights to the
+      # @ose-foundry-core npm scope (the scope/org must already exist).
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Stamp types package version
+        uses: microsoft/variable-substitution@v1
+        with:
+          files: "packages/types/package.json"
+        env:
+          version: ${{ github.ref_name }}
+
+      - name: Build type declarations
+        run: npm run build:types
+
+      - name: Publish @ose-foundry-core/types (pre-release)
+        run: npm publish ./packages/types --tag next --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
