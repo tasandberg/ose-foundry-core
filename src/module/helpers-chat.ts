@@ -117,13 +117,7 @@ export const addChatMessageContextOptions = (_: HTMLElement, options: OseContext
 export const addChatMessageButtons = (msg: ChatMessage, html: HTMLElement) => {
   // Hide blind rolls
   const blindable = html.querySelector(".blindable") as HTMLElement;
-  if (
-    // @ts-expect-error need to add ChatMessage document property updates.
-    msg?.blind &&
-    !game.user?.isGM &&
-    blindable &&
-    blindable.dataset.blind === "true"
-  ) {
+  if (msg?.blind && !game.user?.isGM && blindable && blindable.dataset.blind === "true") {
     blindable.outerHTML =
       "<div class='dice-roll'><div class='dice-result'><div class='dice-formula'>???</div></div></div>";
   }

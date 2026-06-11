@@ -1,3 +1,4 @@
+// @ts-nocheck — Quench e2e tests written against fvtt-types v12; remove once v13 DataModelConfig/DocumentClassConfig wiring lands
 // eslint-disable-next-line eslint-comments/disable-enable-pair
 
 /* eslint-disable simple-import-sort/imports */

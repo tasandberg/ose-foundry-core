@@ -61,10 +61,13 @@ const registerSettings = () => {
     type: String,
     config: true,
     requiresReload: true,
-    choices: Object.values(CONFIG.OSE.encumbranceOptions).reduce((obj, enc) => {
-      obj[enc.type] = enc.localizedLabel;
-      return obj;
-    }, {}) as SettingConfig<EncumbranceOption>["choices"],
+    choices: Object.values(CONFIG.OSE.encumbranceOptions).reduce(
+      (obj, enc) => {
+        obj[enc.type as EncumbranceOption] = enc.localizedLabel;
+        return obj;
+      },
+      {} as Record<EncumbranceOption, string>,
+    ),
   });
 
   game.settings.register(game.system.id, "encumbranceItemStrengthMod", {

@@ -4,6 +4,7 @@
 import { OSE } from "../config";
 import { getRollMode } from "../helpers-message-mode";
 import OSECombatGroupSelector from "./combat-set-groups";
+import type { OSECombatant } from "./combatant";
 
 export const actionGroups = {
   slow: "OSE.items.Slow",

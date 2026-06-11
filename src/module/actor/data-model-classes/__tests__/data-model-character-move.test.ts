@@ -1,3 +1,4 @@
+// @ts-nocheck — Quench e2e tests written against fvtt-types v12; remove once v13 DataModelConfig/DocumentClassConfig wiring lands
 /**
  * @file Tests for the data model class that determines character movement speed
  */

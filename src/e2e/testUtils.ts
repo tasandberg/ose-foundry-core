@@ -14,6 +14,7 @@ export const delay = (ms: number) =>
  */
 export const trashChat = (): undefined | Promise<Document[]> => {
   if (game.messages?.size) return game.messages?.documentClass.deleteDocuments([], { deleteAll: true });
+  return undefined;
 };
 
 /**
@@ -115,7 +116,7 @@ export const createWorldTestItem = async (type: string, name = `New World Test $
   });
 
 export const createActorTestItem = async (
-  actor: StoredDocument<Actor> | undefined,
+  actor: Actor | undefined,
   type: string,
   name = `New Actor Test ${type.capitalize()}`,
   data: object = {},
@@ -123,7 +124,8 @@ export const createActorTestItem = async (
 
 export const createMockMacro = async () =>
   CONFIG.Macro.documentClass.create({
-    name: `Mock Macro ${foundry.utils.randomID()}`,
+    // fvtt-types v13 (pinned) cannot type foundry.utils.randomID(); inline a random suffix instead
+    name: `Mock Macro ${Math.random().toString(36).slice(2, 10)}`,
     type: "script",
     command: "console.log('Testing Macro');",
   });
@@ -154,7 +156,7 @@ export const cleanUpCompendium = async () => game.packs.get("world.testcompendiu
  */
 
 export const cleanUpMacros = async () => {
-  const mockMacros = game.macros?.filter((o) => o.name?.includes("Mock Macro"));
+  const mockMacros = game.macros?.filter((o: Macro) => o.name?.includes("Mock Macro"));
   for (const o of mockMacros || []) {
     await o.delete();
   }
@@ -162,19 +164,19 @@ export const cleanUpMacros = async () => {
 };
 
 export const cleanUpActorsByKey = async (key: string) => {
-  for (const a of game.actors?.filter((a) => a.name === `Test Actor ${key}`) ?? []) {
+  for (const a of game.actors?.filter((a: Actor) => a.name === `Test Actor ${key}`) ?? []) {
     await a.delete();
   }
 };
 
 export const cleanUpWorldItems = async () => {
-  for (const a of game.items?.filter((a) => a?.name?.includes("New World Test")) ?? []) {
+  for (const a of game.items?.filter((a: Item) => a?.name?.includes("New World Test")) ?? []) {
     await a.delete();
   }
 };
 
 export const cleanUpScenes = async () => {
-  for (const s of game.scenes?.filter((s) => s.name === "Mock Scene") ?? []) {
+  for (const s of game.scenes?.filter((s: Scene) => s.name === "Mock Scene") ?? []) {
     await s.delete();
   }
 };

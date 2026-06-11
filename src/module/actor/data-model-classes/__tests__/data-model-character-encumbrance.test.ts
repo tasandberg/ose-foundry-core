@@ -1,3 +1,4 @@
+// @ts-nocheck — Quench e2e tests written against fvtt-types v12; remove once v13 DataModelConfig/DocumentClassConfig wiring lands
 /**
  * @file Tests for encumbrance schemes that are part of the Old School Essentials SRD
  */
