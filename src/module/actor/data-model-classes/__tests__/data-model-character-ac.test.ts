@@ -1,3 +1,4 @@
+// @ts-nocheck — Quench e2e tests written against fvtt-types v12; remove once v13 DataModelConfig/DocumentClassConfig wiring lands
 /**
  * @file Tests for the class representing a creature data model's AC
  */
