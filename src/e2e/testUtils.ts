@@ -124,6 +124,7 @@ export const createActorTestItem = async (
 
 export const createMockMacro = async () =>
   CONFIG.Macro.documentClass.create({
+    // fvtt-types v13 (pinned) cannot type foundry.utils.randomID(); inline a random suffix instead
     name: `Mock Macro ${Math.random().toString(36).slice(2, 10)}`,
     type: "script",
     command: "console.log('Testing Macro');",
