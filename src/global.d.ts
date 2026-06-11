@@ -34,11 +34,11 @@ declare global {
     isNumeric(n: unknown): boolean;
   }
 
-  // Passed by Foundry v13 to Combat#_onEndRound and friends; not exported
-  // via the fvtt-types main entry.
+  // Passed by Foundry v13 to Combat#_onEndRound and friends; fvtt-types has
+  // this as Combat.RoundEventContext but doesn't inject the bare global
+  // alias — migrate to that type once v13 wiring lands.
   interface CombatRoundEventContext {
     round: number;
-    turn: number | null;
     skipped: boolean;
   }
 
