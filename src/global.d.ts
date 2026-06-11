@@ -23,6 +23,25 @@ declare global {
     clamp(value: number, min: number, max: number): number;
   }
 
+  // Same issue as Math.clamp above: Foundry extends these primitives
+  // (client primitives module), but the League v13 types don't re-export
+  // them via the main entry.
+  interface String {
+    capitalize(): string;
+  }
+
+  interface NumberConstructor {
+    isNumeric(n: unknown): boolean;
+  }
+
+  // Passed by Foundry v13 to Combat#_onEndRound and friends; not exported
+  // via the fvtt-types main entry.
+  interface CombatRoundEventContext {
+    round: number;
+    turn: number | null;
+    skipped: boolean;
+  }
+
   interface Game {
     ose: {
       rollItemMacro: (itemName: string) => Promise<void>;
