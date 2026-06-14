@@ -7,6 +7,14 @@
  *   npm  add -D github:tasandberg/ose-foundry-core#types
  *   pnpm add -D github:tasandberg/ose-foundry-core#types
  *
+ * Pass a semver version for an immutable release pin:
+ *   npm run publish:types -- 0.1.0
+ * That stamps the package version `0.1.0` and pushes a lightweight git tag
+ * `types-v0.1.0` pointing at the published commit, so consumers can pin
+ *   github:tasandberg/ose-foundry-core#types-v0.1.0   (immutable)
+ * Omit the arg for an untagged build stamped `0.0.0-dev.<sha>`; the floating
+ * `types` branch always moves to the newest build either way.
+ *
  * This script never rebases (that is `npm run sync:upstream`) and never touches
  * the working tree or the current branch: the orphan commit is assembled in a
  * throwaway git index and pushed directly, so HEAD and your files are untouched.
@@ -44,11 +52,30 @@ function preflight() {
   }
 }
 
+// Optional semver arg → immutable release. Returns { version, tag } or null tag.
+function resolveVersion(sha) {
+  const arg = process.argv[2];
+  if (!arg) {
+    return { version: `0.0.0-dev.${sha}`, tag: null };
+  }
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(arg)) {
+    fail(`Version must be semver (e.g. 0.1.0), got '${arg}'.`);
+  }
+  const tag = `types-v${arg}`;
+  if (run(`git tag -l ${tag}`)) {
+    fail(`Tag ${tag} already exists locally. Bump the version or delete the tag.`);
+  }
+  if (run(`git ls-remote --tags ${REMOTE} ${tag}`)) {
+    fail(`Tag ${tag} already exists on ${REMOTE}. Bump the version.`);
+  }
+  return { version: arg, tag };
+}
+
 function main() {
   preflight();
 
   const sha = run("git rev-parse --short HEAD");
-  const version = `0.0.0-dev.${sha}`;
+  const { version, tag } = resolveVersion(sha);
 
   console.log("Building type declarations (npm run build:types)...");
   execSync("npm run build:types", { stdio: "inherit" });
@@ -78,12 +105,20 @@ function main() {
     stdio: "inherit",
   });
 
+  if (tag) {
+    // Lightweight tag on the same commit → immutable pin for consumers.
+    run(`git tag ${tag} ${commit}`);
+    execSync(`git push ${REMOTE} refs/tags/${tag}`, { stdio: "inherit" });
+  }
+
   fs.rmSync(dist, { recursive: true, force: true });
 
+  const ref = tag || DIST_BRANCH;
   console.log(
     `\nDone. Consumers install with:\n` +
-      `  npm  add -D github:tasandberg/ose-foundry-core#${DIST_BRANCH}\n` +
-      `  pnpm add -D github:tasandberg/ose-foundry-core#${DIST_BRANCH}`
+      `  npm  add -D github:tasandberg/ose-foundry-core#${ref}\n` +
+      `  pnpm add -D github:tasandberg/ose-foundry-core#${ref}` +
+      (tag ? `\n\nFloating latest also updated: #${DIST_BRANCH}` : "")
   );
 }
 
