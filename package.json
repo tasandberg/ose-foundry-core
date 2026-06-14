@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit",
     "link": "node ./tools/symlink.js",
     "unlink": "node ./tools/symlink.js -c",
+    "sync:upstream": "node ./tools/sync-upstream.cjs",
+    "publish:types": "node ./tools/publish-types.cjs",
     "lint": "biome check src",
     "format": "biome format --write src",
     "fix": "biome check --write src"

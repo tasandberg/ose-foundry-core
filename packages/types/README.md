@@ -15,9 +15,14 @@ contains **no runtime code**.
 ## Install
 
 ```sh
-npm i -D @ose-foundry-core/types
-# or pnpm add -D @ose-foundry-core/types
+npm  add -D github:tasandberg/ose-foundry-core#types
+# or
+pnpm add -D github:tasandberg/ose-foundry-core#types
 ```
+
+This installs the prebuilt declarations directly from the fork's `types` branch.
+The branch always points at the latest build; re-run the command to pick up
+updates.
 
 ### Required peer
 
