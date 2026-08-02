@@ -249,15 +249,15 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
 
   _onSortItem(event, itemData) {
     const source = this.actor.items.get(itemData._id);
-    const siblings = this.actor.items.filter((i) => i.data._id !== source.data._id);
+    const siblings = this.actor.items.filter((i) => i.id !== source.id);
     const dropTarget = event.target.closest("[data-item-id]");
     const targetId = dropTarget ? dropTarget.dataset.itemId : null;
-    const target = siblings.find((s) => s.data._id === targetId);
+    const target = siblings.find((s) => s.id === targetId);
     if (!target) throw new Error(`Couldn't drop near ${event.target}`);
     const targetData = target?.system;
 
     // Dragging items into a container
-    if ((target?.type === "container" || target?.data?.type === "container") && targetData.containerId === "") {
+    if (target?.type === "container" && targetData.containerId === "") {
       this.actor.updateEmbeddedDocuments("Item", [{ _id: source.id, "system.containerId": target.id }]);
       return;
     }
@@ -297,7 +297,7 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     if (li.dataset.effectId) {
       const effect = this.actor.effects.get(li.dataset.effectId);
       dragData.type = "ActiveEffect";
-      dragData.data = effect.data;
+      dragData.data = effect.toObject();
     }
 
     // Set data transfer
