@@ -927,9 +927,7 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
       rollAllButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       // The click handler rolls 20 initiatives asynchronously; wait until all
       // rolls and chat messages have landed before asserting.
-      await waitUntil(
-        () => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null),
-      );
+      await waitUntil(() => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null));
       await waitForInput();
       expect(game.messages.size).to.equal(20);
       for (const combatant of game.combat.combatants.contents.map((g) => g.name)) {
@@ -982,9 +980,7 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
     it("should reroll initiative for all combatants on new round", async () => {
       await game?.combat?.nextRound();
       // nextRound rerolls 20 initiatives asynchronously.
-      await waitUntil(
-        () => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null),
-      );
+      await waitUntil(() => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null));
       await waitForInput();
       expect(game.combat?.started).to.be.true;
       expect(game.combat?.round).to.equal(2);
@@ -1064,9 +1060,7 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
 
     it("should reset initiative for all combatants on new round", async () => {
       await game?.combat?.smartRerollInitiative();
-      await waitUntil(
-        () => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null),
-      );
+      await waitUntil(() => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null));
       expect(game.messages.size).to.equal(20);
       for (const group of game.combat?.groups ?? []) {
         expect(group?.initiative).to.not.be.null;
@@ -1129,9 +1123,7 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
       await game.combat.startCombat();
       // startCombat rolls 20 initiatives asynchronously; wait for all
       // rolls/messages to land so later tests see a settled state.
-      await waitUntil(
-        () => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null),
-      );
+      await waitUntil(() => game.messages.size === 20 && !game.combat?.combatants?.some((c) => c.initiative === null));
       await waitForInput();
       expect(game.combat?.started).to.be.true;
       expect(game.combat?.round).to.equal(1);
