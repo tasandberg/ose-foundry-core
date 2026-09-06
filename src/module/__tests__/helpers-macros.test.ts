@@ -190,9 +190,7 @@ export default ({ describe, it, expect, before, after, afterEach }: QuenchMethod
         actorName: actor?.name,
         itemName: `New Actor Test ${type.capitalize()}`,
       });
-      await waitUntil(() =>
-        getActiveNotifications().some((li) => li?.textContent?.trim() === expectedWarning),
-      );
+      await waitUntil(() => getActiveNotifications().some((li) => li?.textContent?.trim() === expectedWarning));
       expect(getActiveNotifications().map((li) => li?.textContent?.trim()))
         .to.be.an("array")
         .that.includes(expectedWarning);

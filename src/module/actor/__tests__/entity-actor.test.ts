@@ -677,7 +677,9 @@ export default ({ describe, it, expect, after, afterEach, before, assert }: e2e.
     // test starts from a known-clean state (prevents cross-test target/message
     // leakage that made this suite flaky).
     const clearTargetsAndTokens = async () => {
-      game.user?.targets.forEach((t) => t.setTarget(false, { releaseOthers: false, groupSelection: true }));
+      game.user?.targets.forEach((t) => {
+        t.setTarget(false, { releaseOthers: false, groupSelection: true });
+      });
       await waitUntil(() => (game.user?.targets.size ?? 0) === 0);
       const tokenIds = (canvas.scene?.tokens?.contents ?? []).map((t) => t.id);
       if (tokenIds.length > 0) {
