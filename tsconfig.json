@@ -17,7 +17,7 @@
       "DOM.Iterable",
       "DOM.AsyncIterable"
     ],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "outDir": "dist/module",
     "skipLibCheck": true,
