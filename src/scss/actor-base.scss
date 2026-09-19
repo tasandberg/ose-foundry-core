@@ -11,6 +11,21 @@
 
 .ose.sheet.actor {
   $detailsHeight: 44px;
+  overflow: visible;
+  .window-content {
+    overflow: visible;
+    position: relative;
+    z-index: 0;
+    > .sheet-header {
+      flex: 0 0 auto;
+    }
+    > .tab.sheet-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+      overflow-y: auto;
+    }
+  }
   .blinking {
     font-weight: bold;
     animation: 0.8s ease-in 1s infinite alternate notify;
@@ -135,10 +150,6 @@
     }
   }
   .sheet-body {
-    height: calc(100% - 140px);
-    .tab {
-      height: 100%;
-    }
     .attributes {
       list-style: none;
       margin: 0;

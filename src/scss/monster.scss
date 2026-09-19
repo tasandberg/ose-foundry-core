@@ -33,7 +33,7 @@
       display: flex;
       justify-content: space-around;
       flex-direction: column;
-      height: 100%;
+      min-height: 100%;
       .attribute-row {
         .attributes {
           justify-content: space-between;

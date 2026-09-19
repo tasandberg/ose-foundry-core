@@ -351,6 +351,8 @@
   "OSE.error.cantDealDamageTo": "Can't deal damage to {nameOrId}",
 
   "TYPES.Base": "Base",
+  "TYPES.Actor.character": "Character",
+  "TYPES.Actor.monster": "Monster",
   "TYPES.Item.ability": "Ability",
   "TYPES.Item.armor": "Armor",
   "TYPES.Item.container": "Container",
