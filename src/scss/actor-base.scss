@@ -163,7 +163,7 @@
       border-top-right-radius: 4px;
       border-top-left-radius: 80px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.15);
-      box-shadow: 0 0 6px 1px $colorDark;
+      box-shadow: 0 -4px 5px -1px $colorDark;
       font-size: var(--font-size-12);
       filter: brightness(0.9);
       &.active {
