@@ -7,6 +7,9 @@
         text-align: center;
       }
       .check-field {
+        > div:not(.check) {
+          align-self: flex-start;
+        }
         &:hover {
           .check {
             display: block;
