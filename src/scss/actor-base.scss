@@ -20,12 +20,12 @@
       flex: 0 0 auto;
       h1 {
         font-size: 2em;
+        margin-bottom: 0;
       }
     }
     > .tab.sheet-body {
-      flex: 1 1 auto;
+      flex: 1 1 0;
       min-height: 0;
-      height: auto;
       overflow-y: auto;
     }
   }
