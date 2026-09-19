@@ -10,7 +10,7 @@ export default function bindItemContextMenu(sheet) {
 
   const itemFrom = (element) => sheet.actor?.items?.get(element?.dataset?.itemId);
 
-  new ContextMenu(
+  new ContextMenu.implementation(
     sheet.element,
     ".item-entry",
     [
