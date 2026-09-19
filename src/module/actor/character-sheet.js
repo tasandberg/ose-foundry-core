@@ -10,7 +10,7 @@ import OseActorSheet from "./actor-sheet";
 export default class OseActorSheetCharacter extends OseActorSheet {
   static DEFAULT_OPTIONS = {
     classes: ["themed", "theme-light", "ose", "sheet", "actor", "character"],
-    position: { width: 480, height: 620 },
+    position: { width: 480, height: 560 },
     actions: {
       generateScores: OseActorSheetCharacter._onGenerateScores,
       popLang: OseActorSheetCharacter._onPopLang,
