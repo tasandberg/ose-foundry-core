@@ -169,7 +169,6 @@ Hooks.on("renderSettings", async (_app, html) => {
 });
 
 Hooks.on("renderChatLog", (_app, html) => OseItem.chatListeners(html));
-Hooks.on("getChatLogEntryContext", chat.addChatMessageContextOptions);
 Hooks.on("getChatMessageContextOptions", chat.addChatMessageContextOptions);
 Hooks.on("renderChatMessageHTML", chat.addChatMessageButtons);
 Hooks.on("renderRollTableSheet", treasure.augmentTable);
