@@ -1,7 +1,6 @@
 /**
  * @file Contains tests for Monster Sheet.
  */
-// eslint-disable-next-line import/no-cycle
 import type { QuenchMethods } from "../../../e2e";
 import {
   cleanUpActorsByKey,
@@ -9,83 +8,134 @@ import {
   closeV2Dialogs,
   createActorTestItem,
   createMockActorKey,
-  delay,
   getMockActorKey,
   openV2Dialogs,
-  waitForInput,
+  waitFor,
+  waitForElement,
 } from "../../../e2e/testUtils";
-import type OseActorSheetMonster from "../monster-sheet";
+import OseActorSheetMonster from "../monster-sheet";
 
 export const key = "ose.actor.sheet.monster";
 export const options = { displayName: "OSE: Actor: Sheet: Monster" };
 
-export default ({ describe, it, expect, after, before }: QuenchMethods) => {
-  const orginalCtrlSetting = game.settings.get(game.system.id, "invertedCtrlBehavior");
+type TestContext = { timeout: (ms: number) => void };
+
+type SheetUnderTest = {
+  element: HTMLElement;
+  render: (options: object) => Promise<unknown>;
+};
+
+const renderSheet = async (actor: { sheet: SheetUnderTest }): Promise<HTMLElement> => {
+  await actor.sheet.render({ force: true });
+  return actor.sheet.element;
+};
+
+const click = (element: Element | null | undefined) => {
+  element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+};
+
+const createMockRollTable = async () => CONFIG.RollTable.documentClass.create({ name: "Test RollTable" });
+
+const cleanUpRollTables = async () => {
+  for (const table of game.tables?.filter((rt: { name: string | null }) => rt.name === "Test RollTable") ?? []) {
+    await table.delete();
+  }
+};
+
+export default ({ describe, it, expect, assert, after, afterEach, before }: QuenchMethods) => {
+  const originalCtrlSetting = game.settings.get(game.system.id, "invertedCtrlBehavior");
 
   after(async () => {
-    await game.settings.set(game.system.id, "invertedCtrlBehavior", orginalCtrlSetting);
+    await game.settings.set(game.system.id, "invertedCtrlBehavior", originalCtrlSetting);
     await cleanUpActorsByKey(key);
     await closeSheets();
   });
 
-  describe("defaultOptions()", () => {
-    it("Has correctly set defaultOptions", async () => {
-      const actor = await createMockActorKey("monster", {}, key);
-      // biome-ignore lint/suspicious/noExplicitAny: V1 option assertions; rewritten with the V2 sheet test pass.
-      const sheet = actor?.sheet as unknown as OseActorSheetMonster & Record<string, any>;
-
-      expect(sheet.options.classes).contain("ose");
-      expect(sheet.options.classes).contain("sheet");
-      expect(sheet.options.classes).contain("actor");
-      expect(sheet.options.classes).contain("monster");
-
-      expect(sheet.options.template).contain("/templates/actors/monster-sheet.html");
-      expect(sheet.options.width).equal(450);
-      expect(sheet.options.height).equal(560);
-      expect(sheet.options.resizable).is.true;
-
-      expect(sheet.options.tabs.length).equal(1);
-      expect(Object.keys(sheet.options.tabs[0])).contain("navSelector");
-      expect(sheet.options.tabs[0].navSelector).equal(".tabs");
-      expect(Object.keys(sheet.options.tabs[0])).contain("contentSelector");
-      expect(sheet.options.tabs[0].contentSelector).equal(".sheet-body");
-      expect(Object.keys(sheet.options.tabs[0])).contain("initial");
-      expect(sheet.options.tabs[0].initial).equal("attributes");
+  describe("DEFAULT_OPTIONS", () => {
+    it("Has correctly set defaults", () => {
+      const opts = OseActorSheetMonster.DEFAULT_OPTIONS;
+      expect(opts.classes).contain("ose");
+      expect(opts.classes).contain("sheet");
+      expect(opts.classes).contain("actor");
+      expect(opts.classes).contain("monster");
+      expect(opts.position.width).equal(450);
+      expect(opts.position.height).equal(560);
     });
 
-    after(async () => {
-      await cleanUpActorsByKey(key);
+    it("Registers the monster sheet actions", () => {
+      const actions = Object.keys(OseActorSheetMonster.DEFAULT_OPTIONS.actions);
+      expect(actions).contain("cyclePattern");
+      expect(actions).contain("generateSaves");
+      expect(actions).contain("resetAttacks");
+      expect(actions).contain("rollAppearing");
+      expect(actions).contain("rollHP");
+      expect(actions).contain("rollMorale");
+      expect(actions).contain("rollReaction");
     });
   });
 
-  // @todo: Do we need separate tests for this, or is getData() enough?
-  describe("_prepareItems(data)", () => {});
+  describe("PARTS", () => {
+    it("Declares one template part per tab", () => {
+      const { PARTS } = OseActorSheetMonster;
+      expect(PARTS.header.template).contain("/templates/actors/partials/monster-header.html");
+      expect(PARTS.tabnav.template).contain("/templates/actors/partials/sheet-tabs.html");
+      expect(PARTS.attributes.template).contain("/templates/actors/partials/monster-attributes-tab.html");
+      expect(PARTS.inventory.template).contain("/templates/actors/partials/character-inventory-tab.html");
+      expect(PARTS.spells.template).contain("/templates/actors/partials/character-spells-tab.html");
+      expect(PARTS.notes.template).contain("/templates/actors/partials/monster-notes-tab.html");
+    });
+  });
 
-  describe("getData()", () => {
+  describe("TABS", () => {
+    it("Opens on the attributes tab", () => {
+      const { primary } = OseActorSheetMonster.TABS;
+      expect(primary.initial).equal("attributes");
+      expect(primary.tabs.map((tab: { id: string }) => tab.id)).to.eql(["attributes", "inventory", "spells", "notes"]);
+    });
+  });
+
+  describe("_isTabEnabled(tabId)", () => {
+    it("Gates the inventory and spells tabs on the actor config", async () => {
+      const actor = await createMockActorKey("monster", {}, key);
+      const sheet = actor?.sheet;
+
+      assert(sheet._isTabEnabled("notes"));
+      assert(sheet._isTabEnabled("attributes"));
+      assert(!sheet._isTabEnabled("inventory"));
+      assert(!sheet._isTabEnabled("spells"));
+
+      await actor?.update({ system: { config: { enableInventory: true }, spells: { enabled: true } } });
+      assert(sheet._isTabEnabled("inventory"));
+      assert(sheet._isTabEnabled("spells"));
+
+      await actor?.delete();
+    });
+  });
+
+  describe("_prepareContext(options)", () => {
     it("returns the expected data", async () => {
       const actor = await createMockActorKey("monster", {}, key);
-      const data = await actor?.sheet?.getData();
+      const data = await actor?.sheet?._prepareContext({});
 
-      // _prepareItems tests
       expect(Object.keys(data)).contain("owned");
-      expect(Object.keys(data?.owned)).contain("weapons");
-      expect(Object.keys(data?.owned)).contain("items");
-      expect(Object.keys(data?.owned)).contain("containers");
-      expect(Object.keys(data?.owned)).contain("armors");
-      expect(Object.keys(data?.owned)).contain("treasures");
+      expect(Object.keys(data.owned)).contain("weapons");
+      expect(Object.keys(data.owned)).contain("items");
+      expect(Object.keys(data.owned)).contain("containers");
+      expect(Object.keys(data.owned)).contain("armors");
+      expect(Object.keys(data.owned)).contain("treasures");
       expect(Object.keys(data)).contain("attackPatterns");
       expect(Object.keys(data)).contain("spells");
       expect(Object.keys(data)).contain("isNew");
+      expect(Object.keys(data)).contain("tabs");
 
-      expect(data?.config.morale).equal(game.settings.get(game.system.id, "morale"));
+      expect(data.config.morale).equal(game.settings.get(game.system.id, "morale"));
       expect(Object.keys(data)).contain("system");
-      expect(Object.keys(data?.system)).contain("details");
-      expect(Object.keys(data?.system.details)).contain("treasure");
-      expect(Object.keys(data?.system.details.treasure)).contain("link");
-    });
+      expect(Object.keys(data.system)).contain("details");
+      expect(Object.keys(data.system.details)).contain("treasure");
+      expect(Object.keys(data.system.details.treasure)).contain("link");
+      expect(data.encumbranceTemplate).equal("");
 
-    after(async () => {
-      await cleanUpActorsByKey(key);
+      await actor?.delete();
     });
   });
 
@@ -93,137 +143,121 @@ export default ({ describe, it, expect, after, before }: QuenchMethods) => {
     it("renders a dialog", async () => {
       const actor = await createMockActorKey("monster", {}, key);
       actor?.sheet?.generateSave();
-      await waitForInput();
+      await waitFor(() => openV2Dialogs().length === 1);
 
       const dialogs = openV2Dialogs();
       expect(dialogs.length).equal(1);
-      dialogs[0].close();
+      await dialogs[0]?.close();
     });
 
-    after(async () => {
-      await cleanUpActorsByKey(key);
+    afterEach(async () => {
       await closeV2Dialogs();
-      await delay(300);
+      await cleanUpActorsByKey(key);
     });
   });
 
-  describe("_onDrop(event)", () => {
-    const createMockRollTable = async () => CONFIG.RollTable.documentClass.create({ name: "Test RollTable" });
-
-    after(async () => {
-      await cleanUpActorsByKey(key);
-      for (const rt of game.tables?.filter((rt) => rt.name === "Test RollTable") ?? []) {
-        await rt.delete();
-      }
-    });
-
-    it("Can drag testing RollTable to Monster", async () => {
+  describe("_onDropDocument(event, document)", () => {
+    it("Dropping a RollTable stores it as the treasure table", async () => {
       const actor = await createMockActorKey("monster", {}, key);
       const rollTable = await createMockRollTable();
-      actor?.sheet?.render(true);
-      await delay(500); // Wait for sheet to render and the roll table to exist in the DOM
+      const root = await renderSheet(actor);
 
-      // Setup DOM elements
-      const dragElement = document.querySelector(`#tables li[data-entry-id="${rollTable?.id}"]`);
-      const dropElement = document.querySelector(".monster .window-content");
+      await actor?.sheet?._onDropDocument(
+        { target: root, preventDefault: () => {}, dataTransfer: new DataTransfer() },
+        rollTable,
+      );
 
-      // Check DOM elements
-      expect(dragElement).not.null;
-      expect(dropElement).not.null;
-
-      // Perform Drag
-      const mockDragStartEvent = new DragEvent("dragstart", {
-        dataTransfer: new DataTransfer(),
-        bubbles: true,
-        cancelable: true,
-      });
-      dragElement?.dispatchEvent(mockDragStartEvent);
-
-      // Drop it
-      // eslint-disable-next-line no-underscore-dangle
-      actor?.sheet?._onDrop(mockDragStartEvent);
-      await waitForInput();
-
-      // Verify
       expect(actor?.system.details.treasure.table).equal(`@UUID[RollTable.${rollTable?.id}]`);
+    });
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await cleanUpRollTables();
+      await closeSheets();
     });
   });
 
   describe("_resetAttacks(event)", () => {
-    it("resets the counter to max", async () => {
+    it("resets the counter to max", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("monster", {}, key);
-      actor?.sheet?.render(true);
-      const [item] = await createActorTestItem(actor, "weapon");
-      item.update({
-        system: {
-          counter: {
-            max: 4,
-            value: 1,
-          },
-        },
-      });
-      await delay(400);
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      await weapon.update({ system: { counter: { max: 4, value: 1 } } });
+      const root = await renderSheet(actor);
 
-      expect(item.system.counter.value).equal(1);
+      await waitForElement(`[data-action="resetAttacks"]`, { root });
+      expect(weapon.system.counter.value).equal(1);
 
-      // Click on reset
-      $(".item-reset").trigger("click");
-      await waitForInput();
-
-      expect(item.system.counter.value).equal(4);
+      click(root.querySelector(`[data-action="resetAttacks"]`));
+      await waitFor(() => weapon.system.counter.value === 4);
+      expect(weapon.system.counter.value).equal(4);
     });
 
-    after(async () => {
+    afterEach(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 
   describe("_updateAttackCounter(event)", () => {
-    before(() => {
-      game.settings.set(game.system.id, "invertedCtrlBehavior", true);
+    before(async () => {
+      await game.settings.set(game.system.id, "invertedCtrlBehavior", true);
     });
 
-    it("updates counter when rolling", async () => {
+    it("updates counter when rolling", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("monster", {}, key);
-      actor?.sheet?.render(true);
-      const [item] = await createActorTestItem(actor, "weapon");
-      item.update({
-        system: {
-          counter: {
-            max: 4,
-            value: 4,
-          },
-        },
-      });
-      await delay(400);
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      await weapon.update({ system: { counter: { max: 4, value: 4 } } });
+      const root = await renderSheet(actor);
 
-      expect(item.system.counter.value).equal(4);
+      const selector = `.item-entry[data-item-id="${weapon.id}"] .item-image`;
+      await waitForElement(selector, { root });
+      expect(weapon.system.counter.value).equal(4);
 
-      // Click on reset
-      $(`.tab .item[data-item-id="${item.id}"] .item-image`).trigger("click");
-      await waitForInput();
-
-      expect(item.system.counter.value).equal(3);
+      click(root.querySelector(selector));
+      await waitFor(() => weapon.system.counter.value === 3);
+      expect(weapon.system.counter.value).equal(3);
     });
 
-    after(async () => {
+    it("changing the counter input updates the weapon", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("monster", {}, key);
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      await weapon.update({ system: { counter: { max: 4, value: 4 } } });
+      const root = await renderSheet(actor);
+
+      const input = await waitForElement<HTMLInputElement>(
+        `.item-entry[data-item-id="${weapon.id}"] .counter input[data-field="value"]`,
+        { root },
+      );
+      expect(input).is.not.null;
+      if (!input) return;
+
+      input.value = "2";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await waitFor(() => weapon.system.counter.value === 2);
+      expect(weapon.system.counter.value).equal(2);
+    });
+
+    afterEach(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 
   describe("_cycleAttackPatterns(event)", () => {
-    const colors = Object.keys(CONFIG.OSE.colors);
-    colors.push("transparent");
+    const colors = [...Object.keys(CONFIG.OSE.colors), "transparent"];
 
     before(async () => {
       const actor = await createMockActorKey("monster", {}, key);
-      actor?.sheet?.render(true);
       await createActorTestItem(actor, "weapon");
-      await delay(300);
+      const root = await renderSheet(actor);
+      await waitForElement(`[data-action="cyclePattern"]`, { root });
     });
 
     describe("properly cycles between colors", () => {
-      colors.forEach((color) => {
+      for (const color of colors) {
         it(`works for color ${color}`, async () => {
           const actor = await getMockActorKey(key);
           const item = actor?.items.contents[0];
@@ -233,18 +267,17 @@ export default ({ describe, it, expect, after, before }: QuenchMethods) => {
           const patternIndex = colors.indexOf(currentPattern);
           const nextIndex = patternIndex + 1 === colors.length ? 0 : patternIndex + 1;
 
-          // Click the thing
-          $(".item-pattern").trigger("click");
-          await delay(200);
+          click(actor?.sheet?.element.querySelector(`[data-action="cyclePattern"]`));
+          await waitFor(() => item?.system.pattern === colors[nextIndex]);
 
-          // Verify
           expect(item?.system.pattern).equal(colors[nextIndex]);
         });
-      });
+      }
     });
 
     after(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 };
