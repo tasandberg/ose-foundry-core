@@ -941,6 +941,10 @@ export default ({ describe, it, expect, assert, after, afterEach, before }: Quen
         const actor = await createMockActorKey(actorType, {}, key);
         const root = await renderSheet(actor);
 
+        const toggle = await waitForElement(`[data-action="toggleControls"]`, { root });
+        expect(toggle).is.not.null;
+        click(toggle);
+
         const control = await waitForElement(`[data-action="configureActor"]`, { root });
         expect(control).is.not.null;
 
