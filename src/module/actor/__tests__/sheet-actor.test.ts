@@ -934,6 +934,41 @@ export default ({ describe, it, expect, assert, after, afterEach, before }: Quen
     });
   });
 
+  describe("editImage", () => {
+    const openFilePickers = () =>
+      Array.from(foundry.applications.instances.values()).filter(
+        (app: unknown) => app instanceof foundry.applications.apps.FilePicker.implementation,
+      );
+
+    for (const actorType of ["character", "monster"]) {
+      it(`clicking the portrait opens the file picker for ${actorType}`, async function (this: TestContext) {
+        this.timeout(5000);
+        const actor = await createMockActorKey(actorType, {}, key);
+        const root = await renderSheet(actor);
+
+        const img = await waitForElement<HTMLImageElement>("img.profile-img", { root });
+        expect(img).is.not.null;
+        expect(img?.dataset.action).equal("editImage");
+        expect(img?.dataset.edit).equal("img");
+
+        img?.click();
+        await waitFor(() => openFilePickers().length === 1);
+
+        const pickers = openFilePickers();
+        expect(pickers.length).equal(1);
+        await pickers[0]?.close();
+      });
+    }
+
+    afterEach(async () => {
+      for (const picker of openFilePickers()) {
+        await picker.close();
+      }
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+    });
+  });
+
   describe("_onConfigureActor()", () => {
     for (const actorType of ["character", "monster"]) {
       it(`Entity Tweaks renders for ${actorType}`, async function (this: TestContext) {
