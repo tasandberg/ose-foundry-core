@@ -943,12 +943,16 @@ export default ({ describe, it, expect, assert, after, afterEach, before }: Quen
 
         const toggle = await waitForElement(`[data-action="toggleControls"]`, { root });
         expect(toggle).is.not.null;
-        click(toggle);
+        toggle?.click();
 
-        const control = await waitForElement(`[data-action="configureActor"]`, { root });
-        expect(control).is.not.null;
+        await waitForElement("#context-menu li.context-item");
+        const label = game.i18n.localize("OSE.dialog.tweaks");
+        const entry = [...document.querySelectorAll<HTMLElement>("#context-menu li.context-item")].find((item) =>
+          item.textContent?.includes(label),
+        );
+        expect(entry).is.not.undefined;
 
-        click(control);
+        entry?.click();
         await waitForElement("#entity-tweaks");
 
         const dialogs = openV2AppsByClass("sheet-tweaks");
@@ -960,6 +964,7 @@ export default ({ describe, it, expect, assert, after, afterEach, before }: Quen
     }
 
     afterEach(async () => {
+      ui.context?.close?.();
       await cleanUpActorsByKey(key);
       await closeSheets();
     });
