@@ -6,7 +6,7 @@ import OseActorSheet from "./actor-sheet";
 
 export default class OseActorSheetMonster extends OseActorSheet {
   static DEFAULT_OPTIONS = {
-    classes: ["ose", "sheet", "monster", "actor"],
+    classes: ["themed", "theme-light", "ose", "sheet", "monster", "actor"],
     position: { width: 450, height: 560 },
     actions: {
       cyclePattern: OseActorSheetMonster._onCyclePattern,

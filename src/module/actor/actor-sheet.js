@@ -18,7 +18,7 @@ export default class OseActorSheet extends HandlebarsApplicationMixin(ActorSheet
   #collapsedContainers = new Set();
 
   static DEFAULT_OPTIONS = {
-    classes: ["ose", "sheet", "actor"],
+    classes: ["themed", "theme-light", "ose", "sheet", "actor"],
     tag: "form",
     form: { submitOnChange: true, closeOnSubmit: false },
     window: { resizable: true },
