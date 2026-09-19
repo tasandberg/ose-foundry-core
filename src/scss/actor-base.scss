@@ -154,13 +154,10 @@
     justify-content: center;
     gap: 0;
     .item {
-      flex: 1 1 0;
       max-height: 35px; /* tab padding fix */
-      padding: 1px 5px 0;
+      padding: 1px 10px 0;
       margin-left: -5px;
-      text-align: left;
       text-indent: 4px;
-      white-space: nowrap;
       line-height: 16px;
       background: url("/ui/parchment.jpg");
       border-top-right-radius: 4px;
