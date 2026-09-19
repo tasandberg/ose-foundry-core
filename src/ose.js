@@ -275,7 +275,7 @@ Hooks.on("renderActorSheet", (app, html) => {
 });
 
 Hooks.on("renderCompendium", renderList.RenderCompendium);
-Hooks.on("activateItemDirectory", renderList.RenderItemDirectory);
+Hooks.on("renderItemDirectory", renderList.RenderItemDirectory);
 
 Hooks.on("OSE.Party.showSheet", OsePartySheet.showPartySheet);
 Hooks.once("initializeDynamicTokenRingConfig", initializeTokenRing);
