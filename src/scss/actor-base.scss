@@ -10,7 +10,7 @@
 }
 
 .ose.sheet.actor {
-  $detailsHeight: 44px;
+  $detailsHeight: 50px;
   overflow: visible;
   .window-content {
     overflow: visible;
@@ -34,6 +34,12 @@
   .item-name,
   .panel-title h4 {
     font-size: 1em;
+  }
+  .description prose-mirror {
+    --min-height: 130px;
+  }
+  .resizable-editor prose-mirror {
+    --min-height: 300px;
   }
   .blinking {
     font-weight: bold;
@@ -106,6 +112,9 @@
       line-height: 30px;
       color: $colorOlive;
       position: relative;
+      input {
+        display: block;
+      }
       label {
         line-height: 10px;
         position: absolute;
@@ -135,7 +144,7 @@
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    justify-content: space-around;
+    justify-content: center;
     .item {
       max-height: 35px; /* tab padding fix */
       padding: 1px 10px 0;
