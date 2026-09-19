@@ -155,7 +155,7 @@ Hooks.once("ready", async () => {
 });
 
 // Party sheet control
-Hooks.on("activateActorDirectory", party.addControl);
+Hooks.on("renderActorDirectory", party.addControl);
 
 /**
  * @param {Application} app
