@@ -1,12 +1,11 @@
 /**
  * @file Contains tests for Actor Sheet.
  */
-// eslint-disable-next-line import/no-cycle
 import type { QuenchMethods } from "../../../e2e";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   cleanUpActorsByKey,
   cleanUpMacros,
+  cleanUpWorldItems,
   closeSheets,
   closeV2Dialogs,
   createActorTestItem,
@@ -17,14 +16,11 @@ import {
   itemTypes,
   openV2AppsByClass,
   openV2Dialogs,
-  openWindows,
   trashChat,
+  waitFor,
   waitForElement,
-  waitForInput,
 } from "../../../e2e/testUtils";
-import type OseItem from "../../item/entity";
 import OseActorSheet from "../actor-sheet";
-import type OseActor from "../entity";
 
 export const key = "ose.actor.sheet";
 export const options = {
@@ -32,45 +28,84 @@ export const options = {
   preSelected: true,
 };
 
-/* --------------------------------------------- */
-/* Types for storing data between tests          */
-/* --------------------------------------------- */
-type DragNDropItem = {
-  item: OseItem | undefined;
-  itemElement: Element | null;
+type TestContext = { timeout: (ms: number) => void };
+
+type SheetUnderTest = {
+  element: HTMLElement;
+  render: (options: object) => Promise<unknown>;
+  changeTab: (tab: string, group: string) => void;
 };
 
-type DragNDropItems = {
-  source: DragNDropItem;
-  target: DragNDropItem;
+const getActor = () => game.actors?.getName(`Test Actor ${key}`);
+
+const sheetRoot = (): HTMLElement => getActor()?.sheet?.element;
+
+const renderSheet = async (actor: { sheet: SheetUnderTest }): Promise<HTMLElement> => {
+  await actor.sheet.render({ force: true });
+  return actor.sheet.element;
 };
 
-type DragNDropDocuments = {
-  actor: StoredDocument<Actor> | undefined;
-  compendium: CompendiumCollection<CompendiumCollection.Metadata> | undefined;
+const showTab = (actor: { sheet: SheetUnderTest }, tab: string) => {
+  actor.sheet.changeTab(tab, "primary");
 };
 
-/* --------------------------------------------- */
-/* Helper Functions                              */
-/* --------------------------------------------- */
-const getActor = async () => game.actors?.getName(`Test Actor ${key}`);
+const tabFor = (itemType: string) => {
+  if (itemType === "spell") return "spells";
+  if (itemType === "ability") return "abilities";
+  return "inventory";
+};
 
-export default ({ describe, it, expect, after, afterEach, before }: QuenchMethods) => {
-  // Saving settings being modified by tests
+const click = (element: Element | null | undefined) => {
+  element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+};
+
+const inTab = (tab: string, selector: string) => `.tab[data-tab="${tab}"] ${selector}`;
+
+export default ({ describe, it, expect, assert, after, afterEach, before }: QuenchMethods) => {
   const originalCtrlSetting = game.settings.get(game.system.id, "invertedCtrlBehavior");
 
   after(async () => {
     await cleanUpActorsByKey(key);
     await closeSheets();
-    game.settings.set(game.system.id, "invertedCtrlBehavior", originalCtrlSetting);
+    await game.settings.set(game.system.id, "invertedCtrlBehavior", originalCtrlSetting);
   });
 
-  describe("getData()", () => {
+  describe("DEFAULT_OPTIONS", () => {
+    it("Has correctly set defaults", () => {
+      const opts = OseActorSheet.DEFAULT_OPTIONS;
+      expect(opts.classes).contain("ose");
+      expect(opts.classes).contain("sheet");
+      expect(opts.classes).contain("actor");
+      expect(opts.tag).equal("form");
+      assert(opts.form.submitOnChange);
+      assert(!opts.form.closeOnSubmit);
+      assert(opts.window.resizable);
+    });
+
+    it("Registers the shared sheet actions", () => {
+      const actions = Object.keys(OseActorSheet.DEFAULT_OPTIONS.actions);
+      expect(actions).contain("configureActor");
+      expect(actions).contain("consumeUse");
+      expect(actions).contain("createItem");
+      expect(actions).contain("deleteItem");
+      expect(actions).contain("editItem");
+      expect(actions).contain("resetSpells");
+      expect(actions).contain("restoreUse");
+      expect(actions).contain("rollAttack");
+      expect(actions).contain("rollHitDice");
+      expect(actions).contain("rollItem");
+      expect(actions).contain("rollSave");
+      expect(actions).contain("showItem");
+      expect(actions).contain("toggleCategory");
+      expect(actions).contain("toggleContainedItems");
+      expect(actions).contain("toggleItemSummary");
+    });
+  });
+
+  describe("_prepareContext(options)", () => {
     it("returns the expected data", async () => {
-      const actor = (await createMockActorKey("character", {}, key)) as OseActor;
-      // biome-ignore lint/suspicious/noExplicitAny: V1 getData assertions; rewritten with the V2 sheet test pass.
-      const sheet = new (OseActorSheet as any)({ document: actor });
-      const data = await sheet.getData();
+      const actor = await createMockActorKey("character", {}, key);
+      const data = await actor?.sheet?._prepareContext({});
 
       expect(data.owner).equal(actor?.isOwner);
       expect(data.editable).equal(actor?.sheet?.isEditable);
@@ -78,310 +113,193 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
       expect(Object.keys(data.config)).contain("initiative");
       expect(Object.keys(data.config)).contain("encumbrance");
       expect(data.isNew).equal(actor?.isNew());
+      expect(Object.keys(data)).contain("tabs");
+
+      await actor?.delete();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_getItemFromActor(event)", () => {
-    itemTypes.forEach((itemType) => {
-      it(`Can get an ${itemType.capitalize()} item`, async () => {
-        // Create item
+  describe("_getItemFromTarget(target)", () => {
+    for (const itemType of itemTypes) {
+      it(`Can get an ${itemType} item`, async function (this: TestContext) {
+        this.timeout(5000);
         const actor = await createMockActorKey("character", {}, key);
         await actor?.update({ system: { spells: { enabled: true } } });
-        actor?.sheet?.render(true);
-        await delay(200);
+        const root = await renderSheet(actor);
 
-        const item = await createActorTestItem(actor, itemType);
-        await waitForInput();
+        const [item] = await createActorTestItem(actor, itemType);
+        const row = await waitForElement(inTab(tabFor(itemType), `.item-entry[data-item-id="${item.id}"]`), { root });
+        expect(row).not.null;
 
-        expect(actor?.items.size).equal(1);
-        const mockedItem = item?.pop();
-        expect(actor?.items.contents.find((o) => o.id === mockedItem?.id)).not.undefined;
-
-        // Select tab to look inside
-        let tab = "";
-        switch (itemType) {
-          // eslint-disable-next-line switch-case/no-case-curly
-          case "spell": {
-            tab = ".tab[data-tab=spells]";
-            break;
-          }
-
-          // eslint-disable-next-line switch-case/no-case-curly
-          case "ability": {
-            tab = ".tab[data-tab=abilities]";
-            break;
-          }
-
-          // eslint-disable-next-line switch-case/no-case-curly
-          default: {
-            tab = ".tab[data-tab=inventory]";
-          }
-        }
-
-        // Setup what to click
-        const clickElement = document.querySelector(`${tab} .item-name`);
-        const descriptionElement = clickElement?.parentElement?.nextElementSibling;
-        expect([...(descriptionElement?.classList ?? [])])
-          .to.be.an("array")
-          .that.does.not.include("expanded");
-
-        // Mock event
-        document.querySelector(`${tab} .item-name`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await delay(200);
-
-        // Verify method
-        expect([...(descriptionElement?.classList ?? [])])
-          .to.be.an("array")
-          .that.includes("expanded");
-
-        // Cleanup
-        await actor?.delete();
+        expect(actor?.sheet?._getItemFromTarget(row?.querySelector(".item-name"))?.id).equal(item.id);
       });
+    }
 
-      after(async () => {
-        await cleanUpActorsByKey(key);
-        await closeSheets();
-        await delay(220);
-      });
-    });
-  });
-
-  describe("_toggleItemCategory(event)", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickCategory = async () => {
-      document
-        .querySelector(".tab[data-tab='inventory'] .item-category-title")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(220);
-    };
-
-    before(async () => {
-      const actor = (await createMockActorKey("character", {}, key)) as OseActor;
-      await actor.update({ system: { spells: { enabled: true } } });
-      actor?.sheet?.render(true);
-      await delay(220);
-    });
-
-    it("clicking the category name hides the item cateogry", async () => {
-      const sheets = openWindows("sheet");
-      expect(sheets.length).equal(1);
-      const categoryElement = document.querySelector(".tab[data-tab='inventory'] .item-list");
-      expect(categoryElement?.style.display).equal("");
-      await clickCategory();
-      expect(categoryElement?.style.display).equal("none");
-    });
-
-    it("clicking the category name again shows the item cateogry", async () => {
-      const sheets = openWindows("sheet");
-      expect(sheets.length).equal(1);
-      const categoryElement = document.querySelector(".tab[data-tab='inventory'] .item-list");
-      expect(categoryElement?.style.display).equal("none");
-      await clickCategory();
-      expect(categoryElement?.style.display).equal("");
-    });
-
-    after(async () => {
-      await cleanUpActorsByKey(key);
-      await closeSheets();
-      await delay(220);
-    });
-  });
-
-  describe("_toggleContainedItems(event)", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickContainerCaret = async () => {
-      document
-        .querySelector(".tab[data-tab='inventory'] .container .category-caret")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(220);
-    };
-
-    before(async () => {
+    it("returns undefined for a target outside an item row", async () => {
       const actor = await createMockActorKey("character", {}, key);
-      await createActorTestItem(actor, "container");
-      await createActorTestItem(actor, "weapon");
-      const weapon = actor?.items.getName("New Actor Test Weapon");
-      const container = actor?.items.getName("New Actor Test Container");
-      await weapon?.update({ system: { containerId: container?.id } });
-      actor?.sheet?.render(true);
+      const root = await renderSheet(actor);
+      expect(actor?.sheet?._getItemFromTarget(root)).is.undefined;
     });
 
-    it("clicking container caret will hide the content", async () => {
-      const sheets = openWindows("sheet");
-      expect(sheets.length).equal(1);
-
-      const actor = await getActor();
-      expect(actor?.items.size).equal(2);
-
-      const container = actor?.items?.getName("New Actor Test Container");
-      expect(actor?.items.getName("New Actor Test Weapon")?.system.containerId).equal(container?.id);
-      const containerElement = document.querySelector(".tab[data-tab='inventory'] .container .contained-items");
-      expect(containerElement?.style.display).equal("");
-
-      await clickContainerCaret();
-      expect(containerElement?.style.display).equal("none");
-    });
-
-    it("clicking container caret again will show the content", async () => {
-      const sheets = openWindows("sheet");
-      expect(sheets.length).equal(1);
-
-      const actor = await getActor();
-      expect(actor?.items.size).equal(2);
-
-      const container = actor?.items?.getName("New Actor Test Container");
-      expect(actor?.items.getName("New Actor Test Weapon")?.system.containerId).equal(container?.id);
-      const containerElement = document.querySelector(".tab[data-tab='inventory'] .container .contained-items");
-
-      expect(containerElement?.style.display).equal("none");
-      await clickContainerCaret();
-      expect(containerElement?.style.display).equal("");
-    });
-
-    after(async () => {
+    afterEach(async () => {
       await cleanUpActorsByKey(key);
       await closeSheets();
     });
   });
 
-  describe("_toggleItemSummary(event)", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickItemSummary = async (tab: string) => {
-      const actor = await getActor();
-      document
-        .querySelector(`#OseActorSheetCharacter-Actor-${actor.id} section .tab[data-tab="${tab}"] .item-name`)
-        ?.click();
-      await delay(320);
-    };
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickNavTab = async (tab: string) => {
-      const actor = await getActor();
-      document.querySelector(`#OseActorSheetCharacter-Actor-${actor.id} nav.sheet-tabs a[data-tab="${tab}"]`)?.click();
-      await delay(120);
+  describe("_toggleItemCategory(target)", () => {
+    const categoryList = () => sheetRoot().querySelector<HTMLElement>(inTab("inventory", ".item-list"));
+
+    const clickCategory = () => {
+      click(sheetRoot().querySelector(inTab("inventory", ".item-category-title")));
     };
 
     before(async () => {
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
-      actor?.sheet?.render(true);
-      await delay(220);
+      await renderSheet(actor);
     });
 
-    // eslint-disable-next-line no-restricted-syntax
+    it("clicking the category name hides the item category", () => {
+      expect(openV2AppsByClass("sheet").length).equal(1);
+      expect(categoryList()?.style.display).equal("");
+      clickCategory();
+      expect(categoryList()?.style.display).equal("none");
+    });
+
+    it("clicking the category name again shows the item category", () => {
+      expect(openV2AppsByClass("sheet").length).equal(1);
+      expect(categoryList()?.style.display).equal("none");
+      clickCategory();
+      expect(categoryList()?.style.display).equal("");
+    });
+
+    after(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+    });
+  });
+
+  describe("_toggleContainedItems(target)", () => {
+    const containedList = () =>
+      sheetRoot().querySelector<HTMLElement>(inTab("inventory", ".container .contained-items"));
+
+    const clickContainerCaret = () => {
+      click(sheetRoot().querySelector(inTab("inventory", ".container .category-caret")));
+    };
+
+    before(async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
+      const [container] = await createActorTestItem(actor, "container");
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      await weapon?.update({ system: { containerId: container?.id } });
+      const root = await renderSheet(actor);
+      await waitForElement(inTab("inventory", ".container .contained-items .item-entry"), { root });
+    });
+
+    it("clicking container caret will hide the content", () => {
+      expect(openV2AppsByClass("sheet").length).equal(1);
+      expect(getActor()?.items.size).equal(2);
+      expect(containedList()?.style.display).equal("");
+      clickContainerCaret();
+      expect(containedList()?.style.display).equal("none");
+    });
+
+    it("clicking container caret again will show the content", () => {
+      expect(openV2AppsByClass("sheet").length).equal(1);
+      expect(containedList()?.style.display).equal("none");
+      clickContainerCaret();
+      expect(containedList()?.style.display).equal("");
+    });
+
+    after(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+    });
+  });
+
+  describe("_toggleItemSummary(target)", () => {
+    before(async () => {
+      const actor = await createMockActorKey("character", {}, key);
+      await actor?.update({ system: { spells: { enabled: true } } });
+      await renderSheet(actor);
+    });
+
     for (const itemType of itemTypes) {
-      let tab = "";
-      switch (itemType) {
-        // eslint-disable-next-line switch-case/no-case-curly
-        case "spell": {
-          tab = "spells";
-          break;
-        }
+      const tab = tabFor(itemType);
+      const summary = () => sheetRoot().querySelector<HTMLElement>(inTab(tab, ".item-summary"));
 
-        // eslint-disable-next-line switch-case/no-case-curly
-        case "ability": {
-          tab = "abilities";
-          break;
-        }
-
-        // eslint-disable-next-line switch-case/no-case-curly
-        default: {
-          tab = "inventory";
-        }
-      }
+      const clickItemName = () => {
+        click(sheetRoot().querySelector(inTab(tab, ".item-name")));
+      };
 
       describe(`for type ${itemType}`, () => {
-        before(async () => {
-          const actor = await getActor();
-          await createActorTestItem(actor, itemType);
+        let itemName = "";
+
+        before(async function (this: TestContext) {
+          this.timeout(5000);
+          const actor = getActor();
+          const [item] = await createActorTestItem(actor, itemType);
+          itemName = item.name;
+          showTab(actor, tab);
+          await waitForElement(inTab(tab, `.item-entry[data-item-id="${item.id}"]`), { root: sheetRoot() });
         });
 
-        it("clicking item name will show the content", async () => {
-          const sheets = openWindows("sheet");
-          expect(sheets.length).equal(1);
-          await clickNavTab(tab);
-
-          const actor = await getActor();
-          expect(actor?.items.size).equal(1);
-          const summaryElement = document.querySelector(
-            `#OseActorSheetCharacter-Actor-${actor.id} section .tab[data-tab="${tab}"] .item-summary`,
-          );
-          expect([...(summaryElement?.classList ?? [])])
+        it("clicking item name will show the content", () => {
+          expect(getActor()?.items.size).equal(1);
+          expect([...(summary()?.classList ?? [])])
             .to.be.an("array")
             .that.does.not.include("expanded");
 
-          await clickItemSummary(tab);
-          expect([...(summaryElement?.classList ?? [])])
+          clickItemName();
+          expect([...(summary()?.classList ?? [])])
             .to.be.an("array")
             .that.includes("expanded");
         });
-        it("clicking item name again will hide the content", async () => {
-          const sheets = openWindows("sheet");
-          expect(sheets.length).equal(1);
-          await clickNavTab(tab);
 
-          const actor = await getActor();
-          expect(actor?.items.size).equal(1);
-
-          const summaryElement = document.querySelector(
-            `#OseActorSheetCharacter-Actor-${actor.id} section .tab[data-tab="${tab}"] .item-summary`,
-          );
-          expect([...(summaryElement?.classList ?? [])])
+        it("clicking item name again will hide the content", () => {
+          expect([...(summary()?.classList ?? [])])
             .to.be.an("array")
             .that.includes("expanded");
 
-          await clickItemSummary(tab);
-          expect([...(summaryElement?.classList ?? [])])
+          clickItemName();
+          expect([...(summary()?.classList ?? [])])
             .to.be.an("array")
             .that.does.not.include("expanded");
         });
+
         it("item containing description still shows the summary", async () => {
-          const sheets = openWindows("sheet");
-          expect(sheets.length).equal(1);
-          await clickNavTab(tab);
-
-          const actor = await getActor();
-          const item = actor?.items.getName(`New Actor Test ${itemType.capitalize()}`);
-
-          await clickItemSummary(tab);
+          const item = getActor()?.items.getName(itemName);
           await item?.update({ system: { description: "hello world" } });
-          await waitForInput();
-          expect(item?.system.description).equal("hello world");
+          await waitFor(() => !!summary()?.innerHTML.includes("hello world"));
 
-          const summaryElement = document.querySelector(
-            `#OseActorSheetCharacter-Actor-${actor.id} section .tab[data-tab="${tab}"] .item-summary`,
-          );
-          expect(summaryElement?.innerHTML.indexOf("hello world") >= 0).is.true;
+          expect(item?.system.description).equal("hello world");
+          expect(summary()?.innerHTML).contain("hello world");
 
           await item?.update({ system: { description: "" } });
         });
-        it("item containing macro reference still shows the summary, Issue #353", async () => {
-          const sheets = openWindows("sheet");
-          expect(sheets.length).equal(1);
-          await clickNavTab(tab);
 
+        it("item containing macro reference still shows the summary, Issue #353", async function (this: TestContext) {
+          this.timeout(5000);
           const macro = await createMockMacro();
-          const macroReference = `<p>@UUID[${macro?.uuid}]{Mock Macro}</p>`;
+          const item = getActor()?.items.getName(itemName);
+          await item?.update({
+            system: { description: `<p>@UUID[${macro?.uuid}]{Mock Macro}</p>` },
+          });
+          await waitFor(() => !!summary()?.querySelector(`a[data-uuid="${macro?.uuid}"]`));
 
-          const actor = await getActor();
-          const item = actor?.items.getName(`New Actor Test ${itemType.capitalize()}`);
-          await item?.update({ system: { description: macroReference } });
-          await waitForInput();
+          expect(summary()).is.not.null;
+          expect(summary()?.querySelector(`a[data-uuid="${macro?.uuid}"]`)).is.not.null;
 
-          const summaryElement = document.querySelector(
-            `#OseActorSheetCharacter-Actor-${actor.id} section .tab[data-tab="${tab}"] .item-summary`,
-          );
-          expect(summaryElement).is.not.null;
-          expect(summaryElement?.querySelector(`a[data-uuid="${macro?.uuid}"]`)).is.not.null;
-          await macro?.delete();
           await item?.update({ system: { description: "" } });
+          await macro?.delete();
         });
 
         after(async () => {
-          const actor = await getActor();
-          actor?.items.forEach(async (i: OseItem) => {
-            await i.delete();
-          });
+          for (const item of getActor()?.items ?? []) {
+            await item.delete();
+          }
           await cleanUpMacros();
         });
       });
@@ -393,276 +311,218 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_displayItemInChat(event)", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickItemShow = async (tab: string) => {
-      document.querySelector(`${tab} .item-show`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(220);
-    };
-
+  describe("_onShowItem(event, target)", () => {
     before(async () => {
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
-      actor?.sheet?.render(true);
-      await delay(220);
+      await renderSheet(actor);
     });
 
-    itemTypes.forEach((itemType) => {
-      let tab = "";
-      switch (itemType) {
-        // eslint-disable-next-line switch-case/no-case-curly
-        case "spell": {
-          tab = ".tab[data-tab='spells']";
-          break;
-        }
+    for (const itemType of itemTypes) {
+      const tab = tabFor(itemType);
 
-        // eslint-disable-next-line switch-case/no-case-curly
-        case "ability": {
-          tab = ".tab[data-tab='abilities']";
-          break;
-        }
-
-        // eslint-disable-next-line switch-case/no-case-curly
-        default: {
-          tab = ".tab[data-tab='inventory']";
-        }
-      }
-
-      it(`can show ${itemType}`, async () => {
+      it(`can show ${itemType}`, async function (this: TestContext) {
+        this.timeout(5000);
         await trashChat();
-        const actor = await getActor();
-        await createActorTestItem(actor, itemType);
-        await waitForInput();
-        await clickItemShow(tab);
-        await waitForInput();
+        const actor = getActor();
+        const [item] = await createActorTestItem(actor, itemType);
+        const root = sheetRoot();
+        await waitForElement(inTab(tab, `.item-entry[data-item-id="${item.id}"]`), { root });
+
+        click(root.querySelector(inTab(tab, `.item-entry[data-item-id="${item.id}"] .item-show`)));
+        await waitFor(() => (game.messages?.size ?? 0) === 1);
+
         expect(game.messages?.size).equal(1);
-        expect(game.messages?.contents[0]?.content).contain(`New Actor Test ${itemType.capitalize()}`);
-        for (const i of actor?.items ?? []) {
-          await i.delete();
+        expect(game.messages?.contents[0]?.content).contain(item.name);
+
+        for (const owned of actor?.items ?? []) {
+          await owned.delete();
         }
       });
+    }
 
-      after(async () => {
-        await cleanUpActorsByKey(key);
-      });
+    after(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+      await trashChat();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
   describe("_removeItemFromActor(item)", () => {
     before(async () => {
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
-      actor?.sheet?.render(true);
+      await renderSheet(actor);
     });
 
-    itemTypes.forEach((itemType) => {
+    for (const itemType of itemTypes) {
       describe(`${itemType} item`, () => {
         it("can remove item outside container", async () => {
-          const actor = (await getActor()) as OseActor;
+          const actor = getActor();
           expect(actor?.items.size).equal(0);
 
-          await createActorTestItem(actor, itemType);
-          await waitForInput();
-          const item = actor?.items.getName(`New Actor Test ${itemType.capitalize()}`);
+          const [item] = await createActorTestItem(actor, itemType);
           expect(actor?.items.size).equal(1);
 
-          // eslint-disable-next-line no-underscore-dangle
           await actor?.sheet?._removeItemFromActor(item);
-          await waitForInput();
+          await waitFor(() => actor?.items.size === 0);
           expect(actor?.items.size).equal(0);
         });
 
         if (itemType !== "container" && itemType !== "spell" && itemType !== "ability") {
-          it("can remove item inside container", async () => {
-            const actor = await getActor();
+          it("can remove item inside container", async function (this: TestContext) {
+            this.timeout(5000);
+            const actor = getActor();
             expect(actor?.items.size).equal(0);
 
-            await createActorTestItem(actor, "container");
-            await createActorTestItem(actor, itemType);
-            await waitForInput();
+            const [container] = await createActorTestItem(actor, "container");
+            const [item] = await createActorTestItem(actor, itemType);
             expect(actor?.items.size).equal(2);
 
-            const item = actor?.items.getName(`New Actor Test ${itemType.capitalize()}`);
-            const container = actor?.items.getName("New Actor Test Container");
-            expect(item).not.undefined;
-            expect(container).not.undefined;
-
-            // eslint-disable-next-line no-underscore-dangle
             await actor?.sheet?._onContainerItemAdd(item, container);
-            await waitForInput();
-
-            // eslint-disable-next-line no-underscore-dangle
             await actor?.sheet?._removeItemFromActor(item);
-            await waitForInput();
+            await waitFor(() => actor?.items.size === 1);
+
             expect(actor?.items.size).equal(1);
             expect(container?.system.itemIds.length).equal(0);
 
-            // eslint-disable-next-line no-underscore-dangle
             await actor?.sheet?._removeItemFromActor(container);
-            await waitForInput();
+            await waitFor(() => actor?.items.size === 0);
             expect(actor?.items.size).equal(0);
           });
-          it("removing container with item inside deletes just container", async () => {
-            const actor = await getActor();
+
+          it("removing container with item inside deletes just container", async function (this: TestContext) {
+            this.timeout(5000);
+            const actor = getActor();
             expect(actor?.items.size).equal(0);
 
-            await createActorTestItem(actor, "container");
-            await createActorTestItem(actor, itemType);
-            await waitForInput();
+            const [container] = await createActorTestItem(actor, "container");
+            const [item] = await createActorTestItem(actor, itemType);
             expect(actor?.items.size).equal(2);
 
-            const item = actor?.items.getName(`New Actor Test ${itemType.capitalize()}`);
-            const container = actor?.items.getName("New Actor Test Container");
-            expect(item).not.undefined;
-            expect(container).not.undefined;
-            expect(actor?.items.size).equal(2);
-
-            // eslint-disable-next-line no-underscore-dangle
             await actor?.sheet?._removeItemFromActor(container);
-            await waitForInput();
+            await waitFor(() => actor?.items.size === 1);
             expect(actor?.items.size).equal(1);
-            // eslint-disable-next-line no-underscore-dangle
+
             await actor?.sheet?._removeItemFromActor(item);
-            await waitForInput();
+            await waitFor(() => actor?.items.size === 0);
             expect(actor?.items.size).equal(0);
           });
         }
       });
+    }
 
-      after(async () => {
-        await cleanUpActorsByKey(key);
-      });
+    after(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_useConsumable(event, decrement)", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickConsumableEmpty = async () =>
-      document
-        .querySelector(`.tab[data-tab="inventory"] .empty-mark`)
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const clickConsumableFull = async () =>
-      document
-        .querySelector(`.tab[data-tab="inventory"] .full-mark`)
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-
-    before(async () => {
+  describe("_changeConsumableQuantity(target, delta)", () => {
+    before(async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
-      await createActorTestItem(actor, "item");
-      await waitForInput();
-
-      const item = actor?.items.contents[0];
+      const [item] = await createActorTestItem(actor, "item");
       await item?.update({ system: { quantity: { max: 6, value: 3 } } });
-      await waitForInput();
-
-      actor?.sheet?.render(true);
-      await delay(220);
+      const root = await renderSheet(actor);
+      await waitForElement(inTab("inventory", ".full-mark"), { root });
     });
 
-    // full = true, empty = false
     it("can decrease value", async () => {
-      const actor = await getActor();
-      const item = actor?.items.contents[0];
+      const item = getActor()?.items.contents[0];
       expect(item?.system.quantity.value).equal(3);
-      await clickConsumableFull();
-      await waitForInput();
+
+      click(sheetRoot().querySelector(inTab("inventory", ".full-mark")));
+      await waitFor(() => item?.system.quantity.value === 2);
       expect(item?.system.quantity.value).equal(2);
     });
+
     it("can increase value", async () => {
-      const actor = await getActor();
-      const item = actor?.items.contents[0];
+      const item = getActor()?.items.contents[0];
       expect(item?.system.quantity.value).equal(2);
-      await clickConsumableEmpty();
-      await waitForInput();
+
+      await waitForElement(inTab("inventory", ".empty-mark"), { root: sheetRoot() });
+      click(sheetRoot().querySelector(inTab("inventory", ".empty-mark")));
+      await waitFor(() => item?.system.quantity.value === 3);
       expect(item?.system.quantity.value).equal(3);
     });
 
     after(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 
   describe("_onSpellChange(event)", () => {
-    before(async () => {
+    const changeSpellField = async (field: string, value: string) => {
+      const input = await waitForElement<HTMLInputElement>(inTab("spells", `input[data-field="${field}"]`), {
+        root: sheetRoot(),
+      });
+      expect(input).is.not.null;
+      if (!input) return;
+      input.value = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    before(async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
       await createActorTestItem(actor, "spell");
-      await waitForInput();
-      actor?.sheet?.render(true);
+      const root = await renderSheet(actor);
+      await waitForElement(inTab("spells", `input[data-field="cast"]`), { root });
     });
 
     it("changing the input for cast changes spell cast data", async () => {
-      const element = document.querySelector("input[data-field='cast']");
-      expect(element).is.not.null;
-      if (element) {
-        element.value = 3;
-        element.dispatchEvent(new Event("change"));
-      }
-      await waitForInput();
-
-      const actor = await getActor();
-      const item = actor?.items.contents[0];
+      const item = getActor()?.items.contents[0];
+      await changeSpellField("cast", "3");
+      await waitFor(() => item?.system.cast === 3);
       expect(item?.system.cast).equal(3);
     });
 
     it("changing the input for memorize changes spell memorize data", async () => {
-      const element = document.querySelector("input[data-field='memorize']");
-      expect(element).is.not.null;
-      if (element) {
-        element.value = 3;
-        element.dispatchEvent(new Event("change"));
-      }
-      await waitForInput();
-
-      const actor = await getActor();
-      const item = actor?.items.contents[0];
+      const item = getActor()?.items.contents[0];
+      await changeSpellField("memorize", "3");
+      await waitFor(() => item?.system.memorized === 3);
       expect(item?.system.memorized).equal(3);
     });
 
     after(async () => {
       await cleanUpActorsByKey(key);
-      await delay(300);
+      await closeSheets();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_resetSpells(event)", () => {
-    before(async () => {
+  describe("_onResetSpells(event, target)", () => {
+    before(async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
-      await createActorTestItem(actor, "spell");
-      await waitForInput();
-      await actor?.items.contents[0].update({
-        system: { cast: 1, memorized: 3 },
-      });
-      actor?.sheet?.render(true);
+      const [spell] = await createActorTestItem(actor, "spell");
+      await spell?.update({ system: { cast: 1, memorized: 3 } });
+      const root = await renderSheet(actor);
+      await waitForElement(`[data-action="resetSpells"]`, { root });
     });
 
     it("resetting spells resets the cast field to maximum", async () => {
-      const actor = await getActor();
-      document.querySelector(`#OseActorSheetCharacter-Actor-${actor.id} a[data-action='reset-spells']`)?.click();
-      await waitForInput();
-
-      expect(actor?.items.contents[0].system.cast).equal(actor?.items.contents[0].system.memorized);
+      const item = getActor()?.items.contents[0];
+      click(sheetRoot().querySelector(`[data-action="resetSpells"]`));
+      await waitFor(() => item?.system.cast === item?.system.memorized);
+      expect(item?.system.cast).equal(item?.system.memorized);
     });
 
     after(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_rollAbility(event) ", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const mockClickItem = async (tab: string) => {
-      document
-        .querySelector(`.tab[data-tab="${tab}"] .item-image`)
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(220);
+  describe("_onRollItem(event, target)", () => {
+    const clickItemImage = async (tab: string, itemId: string) => {
+      const root = sheetRoot();
+      const selector = inTab(tab, `.item-entry[data-item-id="${itemId}"] .item-image`);
+      await waitForElement(selector, { root });
+      click(root.querySelector(selector));
     };
 
     before(async () => {
@@ -672,399 +532,273 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
 
     afterEach(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
       await trashChat();
     });
 
-    it("rolling weapon on monster updates the counter value", async () => {
-      // Sanity checks
+    it("rolling weapon on monster updates the counter value", async function (this: TestContext) {
+      this.timeout(5000);
       expect(game.messages?.size).equal(0);
 
-      // Setup
       const actor = await createMockActorKey("monster", {}, key);
-      await createActorTestItem(actor, "weapon");
-      await waitForInput();
-      await actor?.items.contents[0].update({
-        system: { counter: { value: 3, max: 3 } },
-      });
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      await weapon?.update({ system: { counter: { value: 3, max: 3 } } });
       expect(actor?.items.size).equal(1);
-      actor?.sheet?.render(true);
-      await waitForInput();
-      await mockClickItem("attributes");
+      await renderSheet(actor);
+      await clickItemImage("attributes", weapon.id);
+      await waitFor(() => (game.messages?.size ?? 0) === 1);
 
-      // Verification
       expect(game.messages?.size).equal(1);
       expect(game.messages?.contents[0].content).contain(
-        `<h2>${game.i18n.format("OSE.roll.attacksWith", {
-          name: "New Actor Test Weapon",
-        })}</h2>`,
+        `<h2>${game.i18n.format("OSE.roll.attacksWith", { name: weapon.name })}</h2>`,
       );
-      expect(actor?.items.contents[0].system.counter.value).equal(2);
+      await waitFor(() => weapon?.system.counter.value === 2);
+      expect(weapon?.system.counter.value).equal(2);
     });
 
-    it("rolling weapon on character rolls weapon", async () => {
-      // Sanity checks
+    it("rolling weapon on character rolls weapon", async function (this: TestContext) {
+      this.timeout(5000);
       expect(game.messages?.size).equal(0);
 
-      // Setup
       const actor = await createMockActorKey("character", {}, key);
-      await createActorTestItem(actor, "weapon");
-      await waitForInput();
+      const [weapon] = await createActorTestItem(actor, "weapon");
       expect(actor?.items.size).equal(1);
-      actor?.sheet?.render(true);
-      await waitForInput();
-      await mockClickItem("inventory");
+      await renderSheet(actor);
+      await clickItemImage("inventory", weapon.id);
+      await waitFor(() => (game.messages?.size ?? 0) === 1);
 
-      // Verification
       expect(game.messages?.size).equal(1);
       expect(game.messages?.contents[0].content).contain(
-        `<h2>${game.i18n.format("OSE.roll.attacksWith", {
-          name: "New Actor Test Weapon",
-        })}</h2>`,
+        `<h2>${game.i18n.format("OSE.roll.attacksWith", { name: weapon.name })}</h2>`,
       );
     });
 
-    it("rolling spell rolls and spends the spell", async () => {
-      // Sanity checks
+    it("rolling spell rolls and spends the spell", async function (this: TestContext) {
+      this.timeout(5000);
       expect(game.messages?.size).equal(0);
 
-      // Setup
       const actor = await createMockActorKey("character", {}, key);
       await actor?.update({ system: { spells: { enabled: true } } });
-      await createActorTestItem(actor, "spell");
-      await waitForInput();
+      const [spell] = await createActorTestItem(actor, "spell");
       expect(actor?.items.size).equal(1);
-      actor?.sheet?.render(true);
-      await waitForInput();
-      await mockClickItem("spells");
+      await renderSheet(actor);
+      await clickItemImage("spells", spell.id);
+      await waitFor(() => (game.messages?.size ?? 0) === 1);
 
-      // Verification
       expect(game.messages?.size).equal(1);
-      expect(game.messages?.contents[0].content).contain("<h2>New Actor Test Spell</h2>");
+      expect(game.messages?.contents[0].content).contain(`<h2>${spell.name}</h2>`);
     });
 
-    it("rolling anything else rolls the formula", async () => {
-      // Sanity checks
+    it("rolling anything else rolls the formula", async function (this: TestContext) {
+      this.timeout(5000);
       expect(game.messages?.size).equal(0);
 
-      // Setup
       const actor = await createMockActorKey("character", {}, key);
-      await actor?.update({ system: { spells: { enabled: true } } });
-      await createActorTestItem(actor, "ability");
-      await waitForInput();
-      expect(actor?.items.size).equal(1);
-      await actor?.items.contents[0].update({ system: { roll: "1d6" } });
-      await waitForInput();
-      expect(actor?.items.contents[0].system.roll).equal("1d6");
-      actor?.sheet?.render(true);
-      await waitForInput();
-      await mockClickItem("abilities");
+      const [ability] = await createActorTestItem(actor, "ability");
+      await ability?.update({ system: { roll: "1d6" } });
+      expect(ability?.system.roll).equal("1d6");
+      await renderSheet(actor);
+      await clickItemImage("abilities", ability.id);
+      await waitFor(() => (game.messages?.size ?? 0) === 1);
 
-      // Verification
       expect(game.messages?.size).equal(1);
       expect(game.messages?.contents[0].content).contain(
-        `<h2>${game.i18n.format("OSE.roll.formula", {
-          label: "New Actor Test Ability",
-        })}</h2>`,
+        `<h2>${game.i18n.format("OSE.roll.formula", { label: ability.name })}</h2>`,
       );
     });
 
-    it("rolling anything else, without a formula, does nothing", async () => {
-      // Sanity checks
+    it("rolling an item that is not rollable does nothing", async function (this: TestContext) {
+      this.timeout(5000);
       expect(game.messages?.size).equal(0);
 
-      // Setup
       const actor = await createMockActorKey("character", {}, key);
-      await actor?.update({ system: { spells: { enabled: true } } });
-      await createActorTestItem(actor, "spell");
-      await waitForInput();
-      expect(actor?.items.size).equal(1);
-      actor?.sheet?.render(true);
-      await waitForInput();
-      await mockClickItem("inventory");
+      const [gear] = await createActorTestItem(actor, "item");
+      await renderSheet(actor);
+      await clickItemImage("inventory", gear.id);
+      await delay(120);
 
-      // Verification
       expect(game.messages?.size).equal(0);
-    });
-
-    after(async () => {
-      await cleanUpActorsByKey(key);
-      await trashChat();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_rollSave(event)", () => {
+  describe("_onRollSave(event, target)", () => {
     const saves = ["death", "wand", "paralysis", "breath", "spell"];
 
-    // eslint-disable-next-line unicorn/consistent-function-scoping
     const clickSave = async (save: string) => {
-      document.querySelector(`li[data-save="${save}"] a`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(220);
+      const root = sheetRoot();
+      await waitForElement(`li[data-save="${save}"] a`, { root });
+      click(root.querySelector(`li[data-save="${save}"] a`));
     };
 
-    describe("character can roll", () => {
-      before(async () => {
-        const actor = await createMockActorKey("character", {}, key);
-        await actor?.sheet?.render(true);
-        await game.settings.set(game.system.id, "invertedCtrlBehavior", true);
-        await trashChat();
-        await delay(200);
-      });
-
-      saves.forEach((save) => {
-        it(`${save} save`, async () => {
+    for (const actorType of ["character", "monster"]) {
+      describe(`${actorType} can roll`, () => {
+        before(async () => {
+          await game.settings.set(game.system.id, "invertedCtrlBehavior", true);
+          const actor = await createMockActorKey(actorType, {}, key);
+          await renderSheet(actor);
           await trashChat();
-          await delay(200);
-          expect(game.messages?.size).equal(0);
-          await clickSave(save);
-          expect(game.messages?.size).equal(1);
-          expect(game.messages?.contents[0].content).contain(
-            game.i18n.format("OSE.roll.save", {
-              save: game.i18n.localize(`OSE.saves.${save}.long`),
-            }),
-          );
+        });
+
+        for (const save of saves) {
+          it(`${save} save`, async () => {
+            await trashChat();
+            await waitFor(() => (game.messages?.size ?? 0) === 0);
+            expect(game.messages?.size).equal(0);
+
+            await clickSave(save);
+            await waitFor(() => (game.messages?.size ?? 0) === 1);
+
+            expect(game.messages?.size).equal(1);
+            expect(game.messages?.contents[0].content).contain(
+              game.i18n.format("OSE.roll.save", {
+                save: game.i18n.localize(`OSE.saves.${save}.long`),
+              }),
+            );
+          });
+        }
+
+        after(async () => {
+          await cleanUpActorsByKey(key);
+          await closeSheets();
+          await trashChat();
         });
       });
-
-      after(async () => {
-        await cleanUpActorsByKey(key);
-        await trashChat();
-        await delay(200);
-      });
-    });
-
-    describe("monster can roll", () => {
-      before(async () => {
-        const actor = await createMockActorKey("monster", {}, key);
-        await actor?.sheet?.render(true);
-      });
-
-      saves.forEach((save) => {
-        it(`${save} save`, async () => {
-          await trashChat();
-          await delay(200);
-          expect(game.messages?.size).equal(0);
-          await clickSave(save);
-          expect(game.messages?.size).equal(1);
-          expect(game.messages?.contents[0].content).contain(
-            game.i18n.format("OSE.roll.save", {
-              save: game.i18n.localize(`OSE.saves.${save}.long`),
-            }),
-          );
-        });
-      });
-
-      after(async () => {
-        await cleanUpActorsByKey(key);
-        await trashChat();
-        await delay(200);
-      });
-    });
+    }
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_rollAttack(event)", () => {
-    const attackTypeClasses = ["melee", "missile"];
-    // eslint-disable-next-line unicorn/consistent-function-scoping
+  describe("_onRollAttack(event, target)", () => {
+    const attackTypes = ["melee", "missile"];
+
     const clickAttack = async (attack: string) => {
-      document
-        .querySelector(`li[data-attack="${attack}"] a`)
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await delay(200);
+      const root = sheetRoot();
+      await waitForElement(`li[data-attack="${attack}"] a`, { root });
+      click(root.querySelector(`li[data-attack="${attack}"] a`));
     };
 
     before(async () => {
       await game.settings.set(game.system.id, "invertedCtrlBehavior", true);
       const actor = await createMockActorKey("character", {}, key);
-      actor?.sheet?.render(true);
+      await renderSheet(actor);
       await trashChat();
     });
 
-    attackTypeClasses.forEach((attackClass) => {
-      it(`can attack with ${attackClass}`, async () => {
-        const actor = await getActor();
+    for (const attack of attackTypes) {
+      it(`can attack with ${attack}`, async () => {
+        const actor = getActor();
         expect(game.messages?.size).equal(0);
-        await clickAttack(attackClass);
+
+        await clickAttack(attack);
+        await waitFor(() => (game.messages?.size ?? 0) === 1);
+
         expect(game.messages?.size).equal(1);
         expect(game.messages?.contents[0].content).contain(game.i18n.format("OSE.roll.attacks", { name: actor?.name }));
         await trashChat();
+        await waitFor(() => (game.messages?.size ?? 0) === 0);
       });
-    });
+    }
 
     after(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+      await trashChat();
+    });
+  });
+
+  const containerPreflightCheck = (sourceItemName: string, source: unknown, target: unknown) => {
+    const sourceItem = source as { documentName: string; name: string; system: { containerId: string } };
+    const targetItem = target as { system: { itemIds: string[] } };
+
+    expect(sourceItem).not.undefined;
+    expect(sourceItem.documentName).equal("Item");
+    expect(sourceItem.name).equal(sourceItemName);
+    expect(sourceItem.system.containerId).equal("");
+    expect(targetItem.system.itemIds.length).equal(0);
+  };
+
+  const containerPostflightCheck = (actor: unknown, source: unknown, target: unknown) => {
+    const sourceItem = source as { id: string; type: string; system: { containerId: string } };
+    const targetItem = target as { id: string; system: { itemIds: string[] } };
+    const owner = actor as { system: Record<string, unknown[]> };
+
+    expect(targetItem.system.itemIds.length).equal(1);
+    expect(targetItem.system.itemIds).contain(sourceItem.id);
+    expect(sourceItem.system.containerId).equal(targetItem.id);
+
+    const getter = sourceItem.type === "armor" ? sourceItem.type : `${sourceItem.type}s`;
+    expect(owner.system[getter]?.length).equal(getter === "containers" ? 1 : 0);
+  };
+
+  describe("_onContainerItemAdd(item, target)", () => {
+    for (const itemType of itemTypes) {
+      if (itemType === "spell" || itemType === "ability") continue;
+
+      it(`add ${itemType} to container`, async () => {
+        const actor = await createMockActorKey("character", {}, key);
+        const [container] = await createActorTestItem(actor, "container", "TargetContainer");
+        const [item] = await createActorTestItem(actor, itemType);
+
+        containerPreflightCheck(item.name, item, container);
+        await actor?.sheet?._onContainerItemAdd(item, container);
+        containerPostflightCheck(actor, item, container);
+      });
+    }
+
+    afterEach(async () => {
       await cleanUpActorsByKey(key);
     });
   });
 
-  /* --------------------------------------------- */
-  /* Check Test Helper functions                   */
-  /* --------------------------------------------- */
-  const dragNDropSanityChecks = (documents: DragNDropDocuments, items: DragNDropItems) => {
-    // Check Actor constructed properly
-    expect(documents.actor).not.undefined;
-    expect(documents.actor?.documentName).equal("Actor");
-
-    // Check that the target constructed properly
-    expect(items.target.item).not.undefined;
-    expect(items.target.item?.documentName).equal("Item");
-    expect(items.target.item?.name).equal("TargetContainer");
-  };
-
-  const dragNDropCasePreflightCheck = (sourceItemName: string, items: DragNDropItems) => {
-    expect(items.source.item).not.undefined;
-    expect(items.source.item?.documentName).equal("Item");
-    expect(items.source.item?.name).equal(sourceItemName);
-
-    // Check source and target data
-    expect(items.source.item?.system.containerId).equal("");
-    expect(items.target.item?.system.itemIds.length).equal(0);
-  };
-
-  const dragNDropCasePostflightCheck = (documents: DragNDropDocuments, items: DragNDropItems) => {
-    // Check item data
-    expect(items.target.item?.system.itemIds.length).equal(1);
-    expect(items.target.item?.system.itemIds).contain(items.source.item?.id);
-    expect(items.source.item?.system.containerId).equal(items.target.item?.id);
-
-    // Check getters
-    const getter = items.source.item?.type === "armor" ? items.source.item?.type : `${items.source.item?.type}s`;
-    const amount = getter === "containers" ? 1 : 0;
-    expect(documents.actor?.system[getter].length).equal(amount);
-  };
-
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_onContainerItemAdd(item, target)", () => {
-    /* --------------------------------------------- */
-    /* Loop over item types                          */
-    /* --------------------------------------------- */
-    itemTypes.forEach((itemType) => {
-      // Skip items that can't be put in a container
-      if (itemType === "spell") return;
-      if (itemType === "ability") return;
-
-      const documents: DragNDropDocuments = {} as DragNDropDocuments;
-      const items: DragNDropItems = {
-        source: {} as DragNDropItem,
-        target: {} as DragNDropItem,
-      } as DragNDropItems;
-
-      before(async () => {
-        documents.actor = await createMockActorKey("character", {}, key);
-
-        // Create target container
-        [items.target.item] = await createActorTestItem(documents.actor, "container", "TargetContainer");
-      });
-
-      it(`add ${itemType} to container`, async () => {
-        dragNDropSanityChecks(documents, items);
-
-        // Create source item
-        [items.source.item] = await createActorTestItem(documents.actor, itemType);
-
-        // Perform pre-flight checks
-        const sourceItemName = `New Actor Test ${itemType.capitalize()}`;
-        dragNDropCasePreflightCheck(sourceItemName, items);
-
-        // Perform operation
-        // eslint-disable-next-line no-underscore-dangle
-        await documents.actor?.sheet?._onContainerItemAdd(items.source.item, items.target.item);
-
-        // Perform post-flight checks
-        dragNDropCasePostflightCheck(documents, items);
-      });
-
-      after(async () => {
-        await cleanUpActorsByKey(key);
-      });
-    });
-  });
-
-  // @todo: Refactor to entity and just use event parsing in sheet
   describe("_onContainerItemRemove(item, container)", () => {
-    /* --------------------------------------------- */
-    /* Loop over item types                          */
-    /* --------------------------------------------- */
-    itemTypes.forEach((itemType) => {
-      // Skip items that can't be put in a container
-      if (itemType === "spell") return;
-      if (itemType === "ability") return;
-
-      const documents: DragNDropDocuments = {} as DragNDropDocuments;
-      const items: DragNDropItems = {
-        source: {} as DragNDropItem,
-        target: {} as DragNDropItem,
-      } as DragNDropItems;
-
-      before(async () => {
-        documents.actor = await createMockActorKey("character", {}, key);
-
-        // Create target container
-        [items.target.item] = await createActorTestItem(documents.actor, "container", "TargetContainer");
-
-        // Create source item
-        [items.source.item] = await createActorTestItem(documents.actor, itemType);
-
-        // Perform operation
-        // eslint-disable-next-line no-underscore-dangle
-        await documents.actor?.sheet?._onContainerItemAdd(items.source.item, items.target.item);
-      });
+    for (const itemType of itemTypes) {
+      if (itemType === "spell" || itemType === "ability") continue;
 
       it(`remove ${itemType} from container`, async () => {
-        // Perform pre-flight checks
-        dragNDropCasePostflightCheck(documents, items);
+        const actor = await createMockActorKey("character", {}, key);
+        const [container] = await createActorTestItem(actor, "container", "TargetContainer");
+        const [item] = await createActorTestItem(actor, itemType);
 
-        // Perform operation
-        // eslint-disable-next-line no-underscore-dangle
-        await documents.actor?.sheet?._onContainerItemRemove(items.source.item, items.target.item);
+        await actor?.sheet?._onContainerItemAdd(item, container);
+        containerPostflightCheck(actor, item, container);
 
-        // Perform pre-flight checks
-        const sourceItemName = `New Actor Test ${itemType.capitalize()}`;
-        dragNDropCasePreflightCheck(sourceItemName, items);
+        await actor?.sheet?._onContainerItemRemove(item, container);
+        containerPreflightCheck(item.name, item, container);
       });
+    }
 
-      after(async () => {
-        await cleanUpActorsByKey(key);
-      });
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_onDropItemCreate(droppedItem, targetContainer)", () => {
-    /* --------------------------------------------- */
-    /* Loop over item types                          */
-    /* --------------------------------------------- */
-    itemTypes.forEach((itemType) => {
-      // Skip items that can't be put in a container
-      if (itemType === "spell") return;
-      if (itemType === "ability") return;
-
-      const documents: DragNDropDocuments = {} as DragNDropDocuments;
-      const items: DragNDropItems = {
-        source: {} as DragNDropItem,
-        target: {} as DragNDropItem,
-      } as DragNDropItems;
-
-      before(async () => {
-        documents.actor = await createMockActorKey("character", {}, key);
-      });
+  describe("_createDroppedItems(items)", () => {
+    for (const itemType of itemTypes) {
+      if (itemType === "spell" || itemType === "ability") continue;
 
       it(`add non-actor ${itemType} to sheet`, async () => {
-        // Create item in sidebar
-        items.source.item = (await createWorldTestItem(itemType)) as OseItem;
-        const sourceItemName = items.source.item.name || "test";
+        const actor = await createMockActorKey("character", {}, key);
+        const worldItem = await createWorldTestItem(itemType);
 
-        // eslint-disable-next-line no-underscore-dangle
-        await documents.actor?.sheet?._onDropItemCreate([items.source.item]);
+        const [created] = await actor.sheet._createDroppedItems([worldItem]);
 
-        // Store new item as it recreates in the character sheet
-        items.source.item = documents.actor?.items.getName(sourceItemName) as OseItem;
-
-        expect(items.source.item).not.undefined;
+        expect(created).not.undefined;
+        expect(created.name).equal(worldItem?.name);
+        expect(created.type).equal(itemType);
+        expect(actor?.items.getName(worldItem?.name)).not.undefined;
       });
+    }
 
-      after(async () => {
-        await cleanUpActorsByKey(key);
-      });
+    it("empties the itemIds of a dropped container", async () => {
+      const actor = await createMockActorKey("character", {}, key);
+      const worldItem = await createWorldTestItem("container");
+      await worldItem?.update({ system: { itemIds: ["not-a-real-id"] } });
+
+      const [created] = await actor.sheet._createDroppedItems([worldItem]);
+      expect(created.system.itemIds.length).equal(0);
+    });
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await cleanUpWorldItems();
     });
   });
 
@@ -1073,32 +807,28 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
 
     it("can create standard dialog", async () => {
       const actor = await createMockActorKey("monster", {}, key);
-      // eslint-disable-next-line no-underscore-dangle
       actor?.sheet?._chooseItemType();
-      await waitForInput();
+      await waitFor(() => openV2Dialogs().length === 1);
 
       const dialogs = openV2Dialogs();
       expect(dialogs.length).equal(1);
-
-      defaultChoices.forEach((choice) => {
+      for (const choice of defaultChoices) {
         expect(dialogs[0]?.element.querySelector(`option[value="${choice}"]`)).is.not.null;
-      });
+      }
       await dialogs[0]?.close();
     });
 
     it("can create custom dialog", async () => {
       const customChoices = ["test", "test2", "test3"];
-      const actor = (await createMockActorKey("monster", {}, key)) as OseActor;
-      // eslint-disable-next-line no-underscore-dangle
+      const actor = await createMockActorKey("monster", {}, key);
       actor?.sheet?._chooseItemType(customChoices);
-      await waitForInput();
+      await waitFor(() => openV2Dialogs().length === 1);
 
       const dialogs = openV2Dialogs();
       expect(dialogs.length).equal(1);
-
-      customChoices.forEach((choice) => {
+      for (const choice of customChoices) {
         expect(dialogs[0]?.element.querySelector(`option[value="${choice}"]`)).is.not.null;
-      });
+      }
       await dialogs[0]?.close();
     });
 
@@ -1108,117 +838,126 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
-  describe("_createItem(event)", () => {
+  describe("_createItem(target)", () => {
     for (const itemType of itemTypes) {
-      it(`can create ${itemType}`, async () => {
+      it(`can create ${itemType}`, async function (this: TestContext) {
+        this.timeout(5000);
         const actor = await createMockActorKey("character", {}, key);
         await actor?.update({ system: { spells: { enabled: true } } });
-        await actor?.sheet?.render(true);
-        await delay(200);
+        const root = await renderSheet(actor);
         expect(actor?.items.size).equal(0);
 
-        let selector = `.sheet .item-create[data-type="${itemType}"]`;
-        // Treasure is also an item, so we need to use a different selector
-        if (itemType === "item") {
-          selector += `:not([data-treasure="true"]`;
-        } else if (itemType === "treasure") {
-          selector = `.sheet .item-create[data-type="item"][data-treasure="true"]`;
-        }
-        document.querySelector(selector)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await waitForInput();
+        const selector =
+          itemType === "item"
+            ? `.item-create[data-type="item"]:not([data-treasure])`
+            : `.item-create[data-type="${itemType}"]`;
+        const control = await waitForElement(selector, { root });
+        expect(control).is.not.null;
+
+        click(control);
+        await waitFor(() => actor?.items.size === 1);
 
         expect(actor?.items.size).equal(1);
-        const item: OseItem = actor?.items.contents[0];
-        expect(item).not.undefined;
-        expect(item?.type).equal(itemType);
+        expect(actor?.items.contents[0]?.type).equal(itemType);
       });
     }
 
+    it("can create a treasure item", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
+      const root = await renderSheet(actor);
+
+      const control = await waitForElement(`.item-create[data-type="item"][data-treasure="true"]`, { root });
+      expect(control).is.not.null;
+
+      click(control);
+      await waitFor(() => actor?.items.size === 1);
+
+      expect(actor?.items.contents[0]?.type).equal("item");
+      expect(actor?.items.contents[0]?.system.treasure).is.true;
+    });
+
     afterEach(async () => {
       await cleanUpActorsByKey(key);
-      await waitForInput();
+      await closeSheets();
     });
   });
 
-  // @todo: Refactor to entity and just use event parsing in sheet
   describe("_updateItemQuantity(event)", () => {
-    const updateQuantity = (element: HTMLInputElement, modifier: number) => {
-      // eslint-disable-next-line no-param-reassign
-      element.value = String(Number.parseInt(element.value, 10) + modifier);
-      const event = new InputEvent("change");
-      element.dispatchEvent(event);
+    const updateQuantity = async (itemId: string, modifier: number) => {
+      const selector = `.item-entry[data-item-id="${itemId}"] .quantity input[data-field="value"]`;
+      const input = await waitForElement<HTMLInputElement>(selector, { root: sheetRoot() });
+      expect(input).is.not.null;
+      if (!input) return;
+      input.value = String(Number.parseInt(input.value, 10) + modifier);
+      input.dispatchEvent(new Event("change", { bubbles: true }));
     };
 
-    it("can add to the quantity", async () => {
+    it("can add to the quantity", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
-      actor?.sheet?.render(true);
-      const [item] = (await createActorTestItem(actor, "item")) as unknown as OseItem;
+      const [item] = await createActorTestItem(actor, "item");
       await item.update({ system: { quantity: { value: 2, max: 4 } } });
-      await waitForInput();
-
-      const quantityElement = document.querySelector(
-        `.sheet .item[data-item-id="${item.id}"] input[data-field="value"]`,
-      ) as HTMLInputElement;
+      await renderSheet(actor);
 
       expect(item.system.quantity.value).equal(2);
-      updateQuantity(quantityElement, 1);
-      await waitForInput();
+      await updateQuantity(item.id, 1);
+      await waitFor(() => item.system.quantity.value === 3);
       expect(item.system.quantity.value).equal(3);
     });
 
-    it("can subtract from the quantity", async () => {
+    it("can subtract from the quantity", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
-      actor?.sheet?.render(true);
-      const [item] = (await createActorTestItem(actor, "item")) as unknown as OseItem;
+      const [item] = await createActorTestItem(actor, "item");
       await item.update({ system: { quantity: { value: 2, max: 4 } } });
-      await waitForInput();
-
-      const quantityElement = document.querySelector(
-        `.sheet .item[data-item-id="${item.id}"] input[data-field="value"]`,
-      ) as HTMLInputElement;
+      await renderSheet(actor);
 
       expect(item.system.quantity.value).equal(2);
-      updateQuantity(quantityElement, -1);
-      await waitForInput();
+      await updateQuantity(item.id, -1);
+      await waitFor(() => item.system.quantity.value === 1);
       expect(item.system.quantity.value).equal(1);
     });
 
     afterEach(async () => {
       await cleanUpActorsByKey(key);
-      await delay(300);
+      await closeSheets();
     });
   });
 
-  // @todo: How to test?
-  describe("_renderInner(...args)", () => {});
-  // @todo: How to test?
-  describe("_onResize(event)", () => {});
-
-  describe("_onConfigureActor(event)", () => {
-    for (const actorType of ["character", "monster"]) {
-      it(`Entity Tweaks renders for ${actorType}`, async () => {
-        const actor = await createMockActorKey(actorType, {}, `${key} ${actorType}`);
-        await actor?.sheet?.render(true);
-        // Wait for sheet to render - the header buttons are not available for the first 500ms
-        await delay(600);
-
-        document
-          .querySelector(`#OseActorSheet${actorType.capitalize()}-Actor-${actor?.id} .configure-actor`)
-          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await waitForElement("#entity-tweaks");
-
-        const dialogs = openV2AppsByClass("sheet-tweaks").filter((d) => d.document === actor);
-        expect(dialogs.length).equal(1);
-        const windowElement = dialogs[0].element;
-        expect(windowElement).not.undefined;
-        expect(windowElement.querySelector(".window-title").innerHTML).to.include(`Test Actor ${key} ${actorType}`);
-        await dialogs[0].close();
-        await actor?.delete();
-      });
-    }
+  describe("_getHeaderControls()", () => {
+    it("offers the tweaks control to an owner", async () => {
+      const actor = await createMockActorKey("character", {}, key);
+      const controls = actor?.sheet?._getHeaderControls();
+      expect(controls.some((control: { action?: string }) => control.action === "configureActor")).is.true;
+      await actor?.delete();
+    });
   });
 
-  // @todo: How to test?
-  describe("_getHeaderButtons()", () => {});
+  describe("_onConfigureActor()", () => {
+    for (const actorType of ["character", "monster"]) {
+      it(`Entity Tweaks renders for ${actorType}`, async function (this: TestContext) {
+        this.timeout(5000);
+        const actor = await createMockActorKey(actorType, {}, key);
+        const root = await renderSheet(actor);
+
+        const control = await waitForElement(`[data-action="configureActor"]`, { root });
+        expect(control).is.not.null;
+
+        click(control);
+        await waitForElement("#entity-tweaks");
+
+        const dialogs = openV2AppsByClass("sheet-tweaks");
+        expect(dialogs.length).equal(1);
+        expect(dialogs[0]?.element.querySelector(".window-title")?.innerHTML).to.include(`Test Actor ${key}`);
+
+        await dialogs[0]?.close();
+      });
+    }
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+    });
+  });
 };
