@@ -51,21 +51,10 @@ export const waitForElement = async <T extends Element = HTMLElement>(
   return null;
 };
 
-export const openWindows = (className: string) =>
-  Object.values(ui.windows).filter((o) => o.options.classes.includes(className));
-
-export const openDialogs = () => Object.values(ui.windows).filter((o) => o.options.classes.includes("dialog"));
-
 export const openV2AppsByClass = (className: string) =>
   Array.from(foundry.applications.instances.values()).filter((o) => o.options.classes.includes(className));
 
 export const openV2Dialogs = () => openV2AppsByClass("dialog");
-
-export const closeDialogs = async () => {
-  for (const o of openDialogs()) {
-    await o.close();
-  }
-};
 
 export const closeV2Dialogs = async () => {
   for (const o of openV2Dialogs()) {
@@ -73,14 +62,17 @@ export const closeV2Dialogs = async () => {
   }
 };
 
+export const openWindows = openV2AppsByClass;
+
+export const openDialogs = openV2Dialogs;
+
+export const closeDialogs = closeV2Dialogs;
+
 export const closeSheets = async () => {
-  for (const w of openWindows("sheet")) {
-    await w.close();
-  }
   for (const a of openV2AppsByClass("sheet")) {
     await a.close();
   }
-  waitForInput();
+  await waitForInput();
 };
 
 /**
