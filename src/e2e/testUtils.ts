@@ -76,6 +76,9 @@ export const closeSheets = async () => {
   for (const w of openWindows("sheet")) {
     await w.close();
   }
+  for (const a of openV2AppsByClass("sheet")) {
+    await a.close();
+  }
   waitForInput();
 };
 
