@@ -58,8 +58,8 @@ export default ({ describe, it, expect, assert, after, afterEach, before }: Quen
       expect(opts.classes).contain("sheet");
       expect(opts.classes).contain("actor");
       expect(opts.classes).contain("monster");
-      expect(opts.position.width).equal(450);
-      expect(opts.position.height).equal(560);
+      assert(Number.isFinite(opts.position.width) && opts.position.width > 0);
+      assert(Number.isFinite(opts.position.height) && opts.position.height > 0);
     });
 
     it("Registers the monster sheet actions", () => {

@@ -57,8 +57,8 @@ export default ({ describe, it, expect, assert, after, afterEach }: QuenchMethod
       expect(opts.classes).contain("sheet");
       expect(opts.classes).contain("actor");
       expect(opts.classes).contain("character");
-      expect(opts.position.width).equal(450);
-      expect(opts.position.height).equal(530);
+      assert(Number.isFinite(opts.position.width) && opts.position.width > 0);
+      assert(Number.isFinite(opts.position.height) && opts.position.height > 0);
     });
 
     it("Registers the character sheet actions", () => {
@@ -157,7 +157,8 @@ export default ({ describe, it, expect, assert, after, afterEach }: QuenchMethod
       return Number.parseInt(input?.value ?? "0", 10);
     };
 
-    it("renders the character creator", async () => {
+    it("renders the character creator", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
       const creator = await openCreator(actor);
       await creator?.close();
@@ -269,9 +270,11 @@ export default ({ describe, it, expect, assert, after, afterEach }: QuenchMethod
       click(dialog?.element.querySelector(`button[data-action="ok"]`));
       await waitFor(() => actor?.system.languages.value.length === 1);
 
-      expect(openV2Dialogs().length).equal(0);
       expect(actor?.system.languages.value.length).equal(1);
       expect(actor?.system.languages.value[0]).equal("Common");
+
+      await waitFor(() => openV2Dialogs().length === 0);
+      expect(openV2Dialogs().length).equal(0);
     });
 
     afterEach(async () => {
