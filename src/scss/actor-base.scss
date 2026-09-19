@@ -14,6 +14,7 @@
   overflow: visible;
   .window-content {
     overflow: visible;
+    min-height: 0;
     position: relative;
     z-index: 0;
     > .sheet-header {
