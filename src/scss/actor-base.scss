@@ -15,7 +15,8 @@
   .window-content {
     overflow: visible;
     min-height: 0;
-    isolation: isolate;
+    background: url("/ui/parchment.jpg") repeat;
+    border-radius: 0 0 6px 6px;
     > .sheet-header {
       flex: 0 0 auto;
       h1 {
