@@ -28,7 +28,8 @@ export default ({ describe, it, expect, after, afterEach }: QuenchMethods) => {
   describe("defaultOptions()", () => {
     it("Has correctly set defaultOptions", async () => {
       const actor = await createMockActorKey("character", {}, key);
-      const sheet = actor?.sheet as unknown as OseActorSheetCharacter;
+      // biome-ignore lint/suspicious/noExplicitAny: V1 option assertions; rewritten with the V2 sheet test pass.
+      const sheet = actor?.sheet as unknown as OseActorSheetCharacter & Record<string, any>;
 
       expect(sheet.options.classes).contain("ose");
       expect(sheet.options.classes).contain("sheet");

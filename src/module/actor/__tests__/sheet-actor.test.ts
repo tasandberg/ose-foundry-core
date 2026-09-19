@@ -68,7 +68,8 @@ export default ({ describe, it, expect, after, afterEach, before }: QuenchMethod
   describe("getData()", () => {
     it("returns the expected data", async () => {
       const actor = (await createMockActorKey("character", {}, key)) as OseActor;
-      const sheet = new OseActorSheet(actor);
+      // biome-ignore lint/suspicious/noExplicitAny: V1 getData assertions; rewritten with the V2 sheet test pass.
+      const sheet = new (OseActorSheet as any)({ document: actor });
       const data = await sheet.getData();
 
       expect(data.owner).equal(actor?.isOwner);

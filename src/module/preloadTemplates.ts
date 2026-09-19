@@ -5,9 +5,6 @@ import OSE from "./config";
 
 const preloadHandlebarsTemplates = async () => {
   const templatePaths = [
-    // Character Sheets
-    `${OSE.systemPath()}/templates/actors/character-sheet.html`,
-    `${OSE.systemPath()}/templates/actors/monster-sheet.html`,
     // Character Sheets Partials
     `${OSE.systemPath()}/templates/actors/partials/character-header.html`,
     `${OSE.systemPath()}/templates/actors/partials/character-attributes-tab.html`,

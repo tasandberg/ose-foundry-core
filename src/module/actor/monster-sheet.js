@@ -4,40 +4,51 @@
 import OSE from "../config";
 import OseActorSheet from "./actor-sheet";
 
-/**
- * Extend the basic ActorSheet with some very simple modifications
- */
 export default class OseActorSheetMonster extends OseActorSheet {
-  /**
-   * Extend and override the default options used by the Actor Sheet
-   *
-   * @returns {object} - The sheet's default options
-   */
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(OseActorSheet.defaultOptions, {
-      classes: ["ose", "sheet", "monster", "actor"],
-      template: `${OSE.systemPath()}/templates/actors/monster-sheet.html`,
-      width: 450,
-      height: 560,
-      resizable: true,
+  static DEFAULT_OPTIONS = {
+    classes: ["ose", "sheet", "monster", "actor"],
+    position: { width: 450, height: 560 },
+    actions: {
+      cyclePattern: OseActorSheetMonster._onCyclePattern,
+      generateSaves: OseActorSheetMonster._onGenerateSaves,
+      resetAttacks: OseActorSheetMonster._onResetAttacks,
+      rollAppearing: OseActorSheetMonster._onRollAppearing,
+      rollHP: OseActorSheetMonster._onRollHP,
+      rollMorale: OseActorSheetMonster._onRollMorale,
+      rollReaction: OseActorSheetMonster._onRollReaction,
+    },
+  };
+
+  static TABS = {
+    primary: {
+      initial: "attributes",
       tabs: [
-        {
-          navSelector: ".tabs",
-          contentSelector: ".sheet-body",
-          initial: "attributes",
-        },
+        { id: "attributes", label: "OSE.category.attributes" },
+        { id: "inventory", label: "OSE.category.inventory" },
+        { id: "spells", label: "OSE.category.spells" },
+        { id: "notes", label: "OSE.category.notes" },
       ],
-    });
+    },
+  };
+
+  static PARTS = {
+    header: { template: "/templates/actors/partials/monster-header.html" },
+    tabnav: { template: "/templates/actors/partials/sheet-tabs.html" },
+    attributes: { template: "/templates/actors/partials/monster-attributes-tab.html" },
+    inventory: { template: "/templates/actors/partials/character-inventory-tab.html", scrollable: [".inventory"] },
+    spells: { template: "/templates/actors/partials/character-spells-tab.html", scrollable: [".inventory"] },
+    notes: { template: "/templates/actors/partials/monster-notes-tab.html" },
+  };
+
+  _isTabEnabled(tabId) {
+    if (tabId === "notes") return true;
+    if (!this.actor.isOwnerOrObserver) return false;
+    if (tabId === "inventory") return !!this.actor.system.config.enableInventory;
+    if (tabId === "spells") return !!this.actor.system.spells.enabled;
+    return true;
   }
 
-  /**
-   * Organize and classify Owned Items for Character sheets
-   *
-   * @param data
-   * @private
-   */
   _prepareItems(data) {
-    // Assign and return
     data.owned = {
       weapons: this.actor.system.weapons,
       items: this.actor.system.items,
@@ -50,39 +61,23 @@ export default class OseActorSheetMonster extends OseActorSheet {
     data.spells = this.actor.system.spells.spellList;
   }
 
-  /**
-   * Prepare data for rendering the Actor sheet
-   * The prepared data object contains both the actor data as well as additional sheet options
-   */
-  async getData() {
-    const data = await super.getData();
-    // Prepare owned items
-    this._prepareItems(data);
+  async _prepareContext(options) {
+    const context = await super._prepareContext(options);
 
-    const monsterData = data?.system;
+    this._prepareItems(context);
 
-    // Settings
-    data.config.morale = game.settings.get(game.system.id, "morale");
-    monsterData.details.treasure.link = await foundry.applications.ux.TextEditor.implementation.enrichHTML(
-      monsterData.details.treasure.table,
-      { async: true },
+    const { TextEditor } = foundry.applications.ux;
+    context.config.morale = game.settings.get(game.system.id, "morale");
+    context.system.details.treasure.link = await TextEditor.implementation.enrichHTML(
+      context.system.details.treasure.table,
     );
-    data.isNew = this.actor.isNew();
+    context.enrichedBiography = await TextEditor.implementation.enrichHTML(this.actor.system.details.biography);
 
-    data.enrichedBiography = await foundry.applications.ux.TextEditor.implementation.enrichHTML(
-      this.object.system.details.biography,
-      { async: true },
-    );
+    context.encumbranceTemplate = "";
 
-    // Monsters don't show an encumbrance bar
-    data.encumbranceTemplate = "";
-
-    return data;
+    return context;
   }
 
-  /**
-   * Monster creation helpers
-   */
   async generateSave() {
     const choices = CONFIG.OSE.monster_saves;
 
@@ -91,7 +86,6 @@ export default class OseActorSheetMonster extends OseActorSheet {
       `${OSE.systemPath()}/templates/actors/dialogs/monster-saves.html`,
       templateData,
     );
-    // Create Dialog window
     return new foundry.applications.api.DialogV2({
       window: { title: game.i18n.localize("OSE.dialog.generateSaves") },
       position: {
@@ -119,28 +113,15 @@ export default class OseActorSheetMonster extends OseActorSheet {
     }).render(true);
   }
 
-  async _onDrop(event) {
-    super._onDrop(event);
-    let data;
-    try {
-      data = JSON.parse(event.dataTransfer.getData("text/plain"));
-      if (data.type !== "RollTable") return;
-    } catch (_error) {
-      return false;
-    }
+  async _onDropDocument(event, document) {
+    if (document?.documentName !== "RollTable") return super._onDropDocument(event, document);
 
-    let link = "";
-    if (data.pack) {
-      const tableDatum = game.packs.get(data.pack).index.find((el) => el._id === data.id);
-      link = `@UUID[${data.uuid}]{${tableDatum.name}}`;
-    } else {
-      link = `@UUID[${data.uuid}]`;
-    }
-    this.actor.update({ "system.details.treasure.table": link });
+    const link = document.pack ? `@UUID[${document.uuid}]{${document.name}}` : `@UUID[${document.uuid}]`;
+    await this.actor.update({ "system.details.treasure.table": link });
+    return document;
   }
 
-  /* -------------------------------------------- */
-  async _resetAttacks(_event) {
+  async _resetAttacks() {
     return Promise.all(
       this.actor.items
         .filter((i) => i.type === "weapon")
@@ -154,7 +135,8 @@ export default class OseActorSheetMonster extends OseActorSheet {
 
   async _updateAttackCounter(event) {
     event.preventDefault();
-    const item = this._getItemFromActor(event);
+    const item = this._getItemFromTarget(event.target);
+    if (!item) return;
 
     if (event.target.dataset.field === "value") {
       return item.update({
@@ -168,10 +150,10 @@ export default class OseActorSheetMonster extends OseActorSheet {
     }
   }
 
-  _cycleAttackPatterns(event) {
-    const item = super._getItemFromActor(event);
+  _cycleAttackPatterns(target) {
+    const item = this._getItemFromTarget(target);
+    if (!item) return;
     const currentColor = item.system.pattern;
-    // Attack patterns include all OSE colors and transparent
     const colors = Object.keys(CONFIG.OSE.colors);
     colors.push("transparent");
     let index = colors.indexOf(currentColor);
@@ -185,52 +167,54 @@ export default class OseActorSheetMonster extends OseActorSheet {
     });
   }
 
-  /**
-   * Activate event listeners using the prepared sheet HTML
-   *
-   * @param html - {HTML}   The prepared HTML object ready to be rendered into the DOM
-   */
-  activateListeners(html) {
-    super.activateListeners(html);
+  async _onRender(context, options) {
+    await super._onRender(context, options);
 
-    html.find(".morale-check a").click((ev) => {
-      const actorObject = this.actor;
-      actorObject.rollMorale({ event: ev });
-    });
+    for (const input of this.element.querySelectorAll(".counter input")) {
+      input.addEventListener("click", (event) => event.currentTarget.select());
+      input.addEventListener("change", this._updateAttackCounter.bind(this));
+    }
 
-    html.find(".reaction-check a").click((ev) => {
-      const actorObject = this.actor;
-      actorObject.rollReaction({ event: ev });
-    });
+    for (const link of this.element.querySelectorAll(".treasure-table a")) {
+      link.addEventListener("contextmenu", () => {
+        this.actor.update({ "system.details.treasure.table": null });
+      });
+    }
+  }
 
-    html.find(".appearing-check a").click((ev) => {
-      const actorObject = this.actor;
-      const check = $(ev.currentTarget).closest(".check-field").data("check");
-      actorObject.rollAppearing({ event: ev, check });
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollMorale(event) {
+    this.actor.rollMorale({ event });
+  }
 
-    html.find(".treasure-table a").contextmenu((_ev) => {
-      this.actor.update({ "system.details.treasure.table": null });
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollReaction(event) {
+    this.actor.rollReaction({ event });
+  }
 
-    // Everything below here is only needed if the sheet is editable
-    if (!this.options.editable) return;
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollAppearing(event, target) {
+    const { check } = target.closest(".check-field")?.dataset ?? {};
+    this.actor.rollAppearing({ event, check });
+  }
 
-    html.find(".item-reset[data-action='reset-attacks']").click((ev) => {
-      this._resetAttacks(ev);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollHP(event) {
+    this.actor.rollHP({ event });
+  }
 
-    html
-      .find(".counter input")
-      .click((ev) => ev.target.select())
-      .change(this._updateAttackCounter.bind(this));
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onResetAttacks() {
+    return this._resetAttacks();
+  }
 
-    html.find(".hp-roll").click((ev) => {
-      this.actor.rollHP({ event: ev });
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onCyclePattern(_event, target) {
+    this._cycleAttackPatterns(target);
+  }
 
-    html.find(".item-pattern").click((ev) => this._cycleAttackPatterns(ev));
-
-    html.find('button[data-action="generate-saves"]').click(() => this.generateSave());
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onGenerateSaves() {
+    return this.generateSave();
   }
 }

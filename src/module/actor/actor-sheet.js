@@ -4,118 +4,212 @@
 import OSE from "../config";
 import OseEntityTweaks from "../dialog/entity-tweaks";
 import skipRollDialogCheck from "../helpers-behaviour";
+import bindItemContextMenu from "../sheet/context-menu";
+import { buildTabsContext } from "../sheet/tab-helpers";
 
-export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
-  /**
-   * IDs for items on the sheet that have been expanded.
-   * @type {Set<string>}
-   * @protected
-   */
+const { HandlebarsApplicationMixin } = foundry.applications.api;
+const { ActorSheetV2 } = foundry.applications.sheets;
+
+export default class OseActorSheet extends HandlebarsApplicationMixin(ActorSheetV2) {
   _expanded = new Set();
 
-  async getData() {
-    const data = foundry.utils.deepClone(super.getData().data);
-    for (const item of this.actor.items) {
+  #collapsedCategories = new Set();
+
+  #collapsedContainers = new Set();
+
+  static DEFAULT_OPTIONS = {
+    classes: ["ose", "sheet", "actor"],
+    tag: "form",
+    form: { submitOnChange: true, closeOnSubmit: false },
+    window: { resizable: true },
+    actions: {
+      configureActor: OseActorSheet._onConfigureActor,
+      consumeUse: OseActorSheet._onConsumeUse,
+      createItem: OseActorSheet._onCreateItem,
+      deleteItem: OseActorSheet._onDeleteItem,
+      editItem: OseActorSheet._onEditItem,
+      resetSpells: OseActorSheet._onResetSpells,
+      restoreUse: OseActorSheet._onRestoreUse,
+      rollAttack: OseActorSheet._onRollAttack,
+      rollHitDice: OseActorSheet._onRollHitDice,
+      rollItem: OseActorSheet._onRollItem,
+      rollSave: OseActorSheet._onRollSave,
+      showItem: OseActorSheet._onShowItem,
+      toggleCategory: OseActorSheet._onToggleCategory,
+      toggleContainedItems: OseActorSheet._onToggleContainedItems,
+      toggleItemSummary: OseActorSheet._onToggleItemSummary,
+    },
+  };
+
+  _isTabEnabled(_tabId) {
+    return true;
+  }
+
+  _configureRenderParts(options) {
+    const parts = super._configureRenderParts(options);
+    const tabIds = new Set((this.constructor.TABS?.primary?.tabs ?? []).map(({ id }) => id));
+
+    for (const [partId, part] of Object.entries(parts)) {
+      if (part.template?.startsWith("/")) part.template = `${OSE.systemPath()}${part.template}`;
+      if (tabIds.has(partId) && !this._isTabEnabled(partId)) delete parts[partId];
+    }
+
+    if (!this._isTabEnabled(this.tabGroups.primary)) this.tabGroups.primary = "notes";
+    return parts;
+  }
+
+  async _preparePartContext(partId, context, options) {
+    const partContext = await super._preparePartContext(partId, context, options);
+    partContext.tab = partContext.tabs?.primary?.[partId];
+    return partContext;
+  }
+
+  async _prepareContext(options) {
+    const context = await super._prepareContext(options);
+    const { actor } = this;
+
+    for (const item of actor.items) {
       item.isExpanded = this._expanded.has(item.id);
       await item.prepareDerivedData();
     }
-    data.owner = this.actor.isOwner;
-    data.editable = this.actor.sheet.isEditable;
 
-    // Store flag if the full character sheet is to be shown
-    data.isOwnerOrObserver = this.actor.isOwnerOrObserver;
-
-    data.config = {
-      ...CONFIG.OSE,
-      ascendingAC: game.settings.get(game.system.id, "ascendingAC"),
-      initiative: game.settings.get(game.system.id, "initiative") !== "group",
-      encumbrance: game.settings.get(game.system.id, "encumbranceOption"),
-      encumbranceStrengthMod:
-        game.settings.get(game.system.id, "encumbranceItemStrengthMod") &&
-        game.settings.get(game.system.id, "encumbranceOption") === "itembased",
-    };
-    data.isNew = this.actor.isNew();
-
-    data.encumbranceTemplate =
-      OSE.encumbrance?.templateEncumbranceBar ||
-      `${OSE.systemPath()}/templates/actors/partials/character-encumbrance.html`;
-
-    return data;
+    return Object.assign(context, actor.toObject(false), {
+      cssClass: this.isEditable ? "editable" : "locked",
+      owner: actor.isOwner,
+      editable: this.isEditable,
+      isOwnerOrObserver: actor.isOwnerOrObserver,
+      isNew: actor.isNew(),
+      config: {
+        ...CONFIG.OSE,
+        ascendingAC: game.settings.get(game.system.id, "ascendingAC"),
+        initiative: game.settings.get(game.system.id, "initiative") !== "group",
+        encumbrance: game.settings.get(game.system.id, "encumbranceOption"),
+        encumbranceStrengthMod:
+          game.settings.get(game.system.id, "encumbranceItemStrengthMod") &&
+          game.settings.get(game.system.id, "encumbranceOption") === "itembased",
+      },
+      encumbranceTemplate:
+        OSE.encumbrance?.templateEncumbranceBar ||
+        `${OSE.systemPath()}/templates/actors/partials/character-encumbrance.html`,
+      tabs: buildTabsContext(this, (tab) => this._isTabEnabled(tab.id)),
+    });
   }
 
-  activateEditor(name, options, initialContent) {
-    // remove some controls to the editor as the space is lacking
-    // if (name === "data.details.description") {
-    //   options.toolbar = "styleselect bullist hr table removeFormat save";
-    // }
-    super.activateEditor(name, options, initialContent);
+  _getHeaderControls() {
+    const controls = super._getHeaderControls();
+    if (this.isEditable && (game.user.isGM || this.actor.isOwner)) {
+      controls.unshift({
+        action: "configureActor",
+        icon: "fas fa-code",
+        label: "OSE.dialog.tweaks",
+      });
+    }
+    return controls;
   }
 
-  // Helpers
+  async _onRender(context, options) {
+    await super._onRender(context, options);
 
-  _getItemFromActor(event) {
-    const li = event.currentTarget.closest(".item-entry");
-    return this.actor.items.get(li.dataset.itemId);
-  }
+    if (options.isFirstRender) bindItemContextMenu(this);
+    this._restoreCollapsedState();
+    this._applyResizableSizes();
 
-  // end Helpers
-
-  _toggleItemCategory(event) {
-    event.preventDefault();
-    const targetCategory = $(event.currentTarget);
-    const items = targetCategory.next(".item-list");
-
-    if (items.css("display") === "none") {
-      const el = $(event.currentTarget).find(".fas.fa-caret-right");
-      el.removeClass("fa-caret-right");
-      el.addClass("fa-caret-down");
-
-      items.slideDown(200);
-    } else {
-      const el = $(event.currentTarget).find(".fas.fa-caret-down");
-      el.removeClass("fa-caret-down");
-      el.addClass("fa-caret-right");
-
-      items.slideUp(200);
+    for (const input of this.element.querySelectorAll(".item-category-title input")) {
+      input.addEventListener("click", (event) => event.stopPropagation());
+    }
+    for (const input of this.element.querySelectorAll(".quantity input")) {
+      input.addEventListener("click", (event) => event.currentTarget.select());
+      input.addEventListener("change", this._updateItemQuantity.bind(this));
+    }
+    for (const input of this.element.querySelectorAll(".memorize input")) {
+      input.addEventListener("click", (event) => event.currentTarget.select());
+      input.addEventListener("change", this._onSpellChange.bind(this));
     }
   }
 
-  _toggleContainedItems(event) {
-    event.preventDefault();
-    const targetItems = $(event.target.closest(".container"));
-    const items = targetItems.find(".item-list.contained-items");
+  _onPosition(position) {
+    super._onPosition(position);
+    this._applyResizableSizes();
+  }
 
-    if (items.css("display") === "none") {
-      const el = targetItems.find(".fas.fa-caret-right");
-      el.removeClass("fa-caret-right");
-      el.addClass("fa-caret-down");
+  _applyResizableSizes() {
+    const baseHeight = this.options.position?.height;
+    if (!this.element || typeof baseHeight !== "number" || typeof this.position.height !== "number") return;
+    const heightDelta = this.position.height - baseHeight;
 
-      items.slideDown(200);
-    } else {
-      const el = targetItems.find(".fas.fa-caret-down");
-      el.removeClass("fa-caret-down");
-      el.addClass("fa-caret-right");
+    for (const el of this.element.querySelectorAll(".resizable[data-base-size]")) {
+      const baseSize = Number.parseInt(el.dataset.baseSize, 10);
+      if (Number.isNaN(baseSize)) continue;
+      el.style.height = `${heightDelta + baseSize}px`;
+    }
 
-      items.slideUp(200);
+    for (const container of this.element.querySelectorAll(".resizable-editor[data-editor-size]")) {
+      const editorSize = Number.parseInt(container.dataset.editorSize, 10);
+      if (Number.isNaN(editorSize)) continue;
+      for (const editor of container.querySelectorAll(".editor")) {
+        editor.style.height = `${heightDelta + editorSize}px`;
+      }
     }
   }
 
-  _toggleItemSummary(event) {
-    event.preventDefault();
-    const item = event.currentTarget.closest(".item-entry.item");
-    const itemSummary = item.querySelector(".item-summary");
-    if (itemSummary.classList.contains("expanded")) {
-      this._expanded.delete(item.dataset.itemId);
-    } else {
-      this._expanded.add(item.dataset.itemId);
+  _getItemFromTarget(target) {
+    const li = target?.closest(".item-entry");
+    return li ? this.actor.items.get(li.dataset.itemId) : undefined;
+  }
+
+  _setListCollapsed(caretRoot, list, collapsed) {
+    list.style.display = collapsed ? "none" : "";
+    const caret = caretRoot?.querySelector(".fas.fa-caret-down, .fas.fa-caret-right");
+    if (!caret) return;
+    caret.classList.toggle("fa-caret-down", !collapsed);
+    caret.classList.toggle("fa-caret-right", collapsed);
+  }
+
+  _restoreCollapsedState() {
+    for (const title of this.element.querySelectorAll(".inventory .item-category-title[data-category]")) {
+      const list = title.nextElementSibling;
+      if (!list?.classList.contains("item-list")) continue;
+      this._setListCollapsed(title, list, this.#collapsedCategories.has(title.dataset.category));
     }
+
+    for (const container of this.element.querySelectorAll(".inventory .container")) {
+      const list = container.querySelector(".item-list.contained-items");
+      if (!list) continue;
+      this._setListCollapsed(
+        container.querySelector(".item-header"),
+        list,
+        this.#collapsedContainers.has(container.dataset.itemId),
+      );
+    }
+  }
+
+  _toggleItemCategory(target) {
+    const list = target.nextElementSibling;
+    if (!list?.classList.contains("item-list")) return;
+    const collapsed = list.style.display !== "none";
+    const { category } = target.dataset;
+    if (collapsed) this.#collapsedCategories.add(category);
+    else this.#collapsedCategories.delete(category);
+    this._setListCollapsed(target, list, collapsed);
+  }
+
+  _toggleContainedItems(target) {
+    const container = target.closest(".container");
+    const list = container?.querySelector(".item-list.contained-items");
+    if (!list) return;
+    const collapsed = list.style.display !== "none";
+    if (collapsed) this.#collapsedContainers.add(container.dataset.itemId);
+    else this.#collapsedContainers.delete(container.dataset.itemId);
+    this._setListCollapsed(container.querySelector(".item-header"), list, collapsed);
+  }
+
+  _toggleItemSummary(target) {
+    const item = target.closest(".item-entry.item");
+    const itemSummary = item?.querySelector(".item-summary");
+    if (!itemSummary) return;
+    if (itemSummary.classList.contains("expanded")) this._expanded.delete(item.dataset.itemId);
+    else this._expanded.add(item.dataset.itemId);
     itemSummary.classList.toggle("expanded");
-  }
-
-  async _displayItemInChat(event) {
-    const li = $(event.currentTarget).closest(".item-entry");
-    const item = this.actor.items.get(li.data("itemId"));
-    item.show();
   }
 
   async _promptRemoveItemFromActor(item) {
@@ -136,10 +230,8 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     });
   }
 
-  // eslint-disable-next-line no-underscore-dangle, consistent-return
   async _removeItemFromActor(item) {
     if (item.type === "ability" || item.type === "spell") {
-      // eslint-disable-next-line no-underscore-dangle
       return this.actor.deleteEmbeddedDocuments("Item", [item._id]);
     }
     if (item.type !== "container" && item.system.containerId !== "") {
@@ -151,7 +243,6 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     if (item.type === "container" && item.system.itemIds) {
       const containedItems = item.system.itemIds;
       const updateData = containedItems.reduce((acc, val) => {
-        // Only create update data for items that still exist on the actor
         if (this.actor.items.get(val)) acc.push({ _id: val, "system.containerId": "" });
         return acc;
       }, []);
@@ -159,28 +250,13 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
       await this.actor.updateEmbeddedDocuments("Item", updateData);
     }
 
-    // eslint-disable-next-line no-underscore-dangle
     this.actor.deleteEmbeddedDocuments("Item", [item._id]);
-  }
-
-  /**
-   * @param event
-   * @param {bool} decrement
-   */
-  _useConsumable(event, decrement) {
-    const item = this._getItemFromActor(event);
-    if (!item) return null;
-    let {
-      quantity: { value: quantity },
-    } = item.system;
-    item.update({
-      "system.quantity.value": decrement ? --quantity : ++quantity,
-    });
   }
 
   async _onSpellChange(event) {
     event.preventDefault();
-    const item = this._getItemFromActor(event);
+    const item = this._getItemFromTarget(event.target);
+    if (!item) return;
     if (event.target.dataset.field === "cast") {
       return item.update({ "system.cast": Number.parseInt(event.target.value, 10) });
     }
@@ -191,234 +267,22 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     }
   }
 
-  async _resetSpells(event) {
-    const spellsContainer = event.currentTarget.closest(".inventory.spells");
-    const spellElements = spellsContainer.querySelectorAll(".item-entry");
+  async _updateItemQuantity(event) {
+    event.preventDefault();
+    const item = this._getItemFromTarget(event.target);
+    if (!item) return;
 
-    const updates = [];
-    for (const el of spellElements) {
-      const { itemId } = el.dataset;
-      const item = this.actor.items.get(itemId);
-
-      if (item?.system) {
-        updates.push({
-          _id: item.id,
-          "system.cast": item.system.memorized,
-        });
-      }
-    }
-
-    if (updates.length > 0) {
-      await this.actor.updateEmbeddedDocuments("Item", updates);
-    }
-  }
-
-  async _rollAbility(event) {
-    const item = this._getItemFromActor(event);
-    const itemData = item?.system;
-    if (item.type === "weapon") {
-      if (this.actor.type === "monster") {
-        await item.update({
-          "system.counter.value": itemData.counter.value - 1,
-        });
-      }
-      item.rollWeapon({ skipDialog: skipRollDialogCheck(event) });
-    } else if (item.type === "spell") {
-      await item.spendSpell({ skipDialog: skipRollDialogCheck(event) });
-    } else {
-      await item.rollFormula({ skipDialog: skipRollDialogCheck(event) });
-    }
-  }
-
-  async _rollSave(event) {
-    const actorObject = this.actor;
-    const element = event.currentTarget;
-    const { save } = element.parentElement.parentElement.dataset;
-    actorObject.rollSave(save, { event });
-  }
-
-  async _rollAttack(event) {
-    const actorObject = this.actor;
-    const element = event.currentTarget;
-    const { attack } = element.parentElement.parentElement.dataset;
-    actorObject.targetAttack({ roll: {} }, attack, {
-      type: attack,
-      skipDialog: skipRollDialogCheck(event),
-    });
-  }
-
-  _onSortItem(event, itemData) {
-    const source = this.actor.items.get(itemData._id);
-    const siblings = this.actor.items.filter((i) => i.data._id !== source.data._id);
-    const dropTarget = event.target.closest("[data-item-id]");
-    const targetId = dropTarget ? dropTarget.dataset.itemId : null;
-    const target = siblings.find((s) => s.data._id === targetId);
-    if (!target) throw new Error(`Couldn't drop near ${event.target}`);
-    const targetData = target?.system;
-
-    // Dragging items into a container
-    if ((target?.type === "container" || target?.data?.type === "container") && targetData.containerId === "") {
-      this.actor.updateEmbeddedDocuments("Item", [{ _id: source.id, "system.containerId": target.id }]);
-      return;
-    }
-    if (source?.system.containerId !== "") {
-      this.actor.updateEmbeddedDocuments("Item", [{ _id: source.id, "system.containerId": "" }]);
-    }
-
-    super._onSortItem(event, itemData);
-  }
-
-  _onDragStart(event) {
-    const li = event.currentTarget;
-    let itemIdsArray = [];
-    if (event.target.classList.contains("content-link")) return;
-
-    let dragData;
-
-    // Owned Items
-    if (li.dataset.itemId) {
-      const item = this.actor.items.get(li.dataset.itemId);
-      dragData = item.toDragData();
-      dragData.item = item;
-      dragData.type = "Item";
-      if (item.type === "container" && item.system.itemIds.length > 0) {
-        // otherwise JSON.stringify will quadruple stringify for some reason
-        itemIdsArray = item.system.itemIds;
-      }
-    }
-
-    // Create drag data
-    dragData.actorId = this.actor.id;
-    dragData.sceneId = this.actor.isToken ? canvas.scene?.id : null;
-    dragData.tokenId = this.actor.isToken ? this.actor.token.id : null;
-    dragData.pack = this.actor.pack;
-
-    // Active Effect
-    if (li.dataset.effectId) {
-      const effect = this.actor.effects.get(li.dataset.effectId);
-      dragData.type = "ActiveEffect";
-      dragData.data = effect.data;
-    }
-
-    // Set data transfer
-    event.dataTransfer.setData(
-      "text/plain",
-      JSON.stringify(dragData, (key, value) => {
-        if (key === "itemIds") {
-          // something about how this Array is created makes its elements not real Array elements
-          // we go through this hoop to trick stringify into creating our string
-          return JSON.stringify(itemIdsArray);
-        }
-        return value;
-      }),
-    );
-  }
-
-  // eslint-disable-next-line no-underscore-dangle
-  async _onDropFolder(_event, data) {
-    const folder = await fromUuid(data.uuid);
-    if (!folder || folder.type !== "Item") return;
-
-    let itemArray = folder.contents || [];
-
-    folder.getSubfolders(true).forEach((subfolder) => {
-      itemArray.push(...subfolder.contents);
-    });
-
-    // Compendium items
-    if (itemArray.length > 0 && itemArray[0]?.uuid?.includes("Compendium")) {
-      const items = [];
-      itemArray.forEach(async (item) => {
-        items.push(await fromUuid(item.uuid));
+    if (event.target.dataset.field === "value") {
+      return item.update({
+        "system.quantity.value": Number.parseInt(event.target.value, 10),
       });
-      itemArray = items;
     }
-
-    this._onDropItemCreate(itemArray);
-  }
-
-  // eslint-disable-next-line no-underscore-dangle
-  async _onDropItem(event, data) {
-    const targetId = event.target.closest(".item")?.dataset?.itemId;
-    const targetItem = this.actor.items.get(targetId);
-    const targetIsContainer = targetItem?.type === "container";
-
-    // This eats the event.target as it is parsed with the TextEditor.
-    const item = await Item.implementation.fromDropData(data);
-    const itemData = item.toObject();
-
-    const exists = !!this.actor.items.get(item.id);
-
-    const isContainer = this.actor.items.get(item.system.containerId);
-
-    // Issue: https://github.com/vttred/ose/issues/357
-    if (item.id === targetId) return;
-
-    if (!exists && !targetIsContainer)
-      // eslint-disable-next-line no-underscore-dangle
-      return this._onDropItemCreate([itemData]);
-
-    // eslint-disable-next-line no-underscore-dangle
-    if (isContainer) return this._onContainerItemRemove(item, isContainer);
-
-    // eslint-disable-next-line no-underscore-dangle
-    if (targetIsContainer) return this._onContainerItemAdd(item, targetItem);
-  }
-
-  async _onContainerItemRemove(item, container) {
-    const newList = container.system.itemIds.filter((s) => s !== item.id);
-    const itemObj = this.object.items.get(item.id);
-    await container.update({ system: { itemIds: newList } });
-    await itemObj.update({ system: { containerId: "" } });
-  }
-
-  async _onContainerItemAdd(item, target) {
-    const alreadyExistsInActor = target.parent.items.find((i) => i.id === item.id);
-    let latestItem = item;
-    if (!alreadyExistsInActor) {
-      // eslint-disable-next-line no-underscore-dangle
-      const newItem = await this._onDropItemCreate([item.toObject()]);
-      latestItem = newItem.pop();
-    }
-
-    const alreadyExistsInContainer = target.system.itemIds.find((i) => i.id === latestItem.id);
-    if (!alreadyExistsInContainer) {
-      const newList = [...target.system.itemIds, latestItem.id];
-      await target.update({ system: { itemIds: newList } });
-      await latestItem.update({ system: { containerId: target.id, equipped: false } });
+    if (event.target.dataset.field === "max") {
+      return item.update({
+        "system.quantity.max": Number.parseInt(event.target.value, 10),
+      });
     }
   }
-
-  // eslint-disable-next-line no-underscore-dangle, consistent-return
-  async _onDropItemCreate(droppedItem, targetContainer = false) {
-    // override to fix hidden items because their original containers don't exist on this actor
-    const droppedItemArray = Array.isArray(droppedItem) ? droppedItem : [droppedItem];
-    droppedItemArray.forEach((item) => {
-      if (item.system.containerId && item.system.containerId !== "")
-        // eslint-disable-next-line no-param-reassign
-        item.system.containerId = "";
-      if (item.type === "container" && typeof item.system.itemIds === "string") {
-        // itemIds was double stringified to fix strange behavior with stringify blanking our Arrays
-        const containedItems = JSON.parse(item.system.itemIds);
-        containedItems.forEach((containedItem) => {
-          // eslint-disable-next-line no-param-reassign
-          containedItem.system.containerId = "";
-        });
-        droppedItem.push(...containedItems);
-      }
-    });
-    if (!targetContainer) {
-      return this.actor.createEmbeddedDocuments("Item", droppedItem);
-    }
-
-    const { itemIds } = targetContainer.system;
-    itemIds.push(droppedItem.id);
-    const item = this.actor.items.get(droppedItem[0].id);
-    await targetContainer.update({ system: { itemIds } });
-    return item.update({ system: { containerId: targetContainer.id } });
-  }
-
-  /* -------------------------------------------- */
 
   async _chooseItemType(choices = ["weapon", "armor", "shield", "gear"]) {
     const templateData = {
@@ -431,7 +295,6 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
       `${OSE.systemPath()}/templates/items/entity-create.html`,
       templateData,
     );
-    // Create Dialog window
     return new Promise((resolve) => {
       new foundry.applications.api.DialogV2({
         window: { title: game.i18n.localize("OSE.dialog.createItem") },
@@ -457,95 +320,99 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     });
   }
 
-  // eslint-disable-next-line no-underscore-dangle
-  _createItem(event) {
-    event.preventDefault();
-    const header = event.currentTarget;
-    const { treasure, type, lvl } = header.dataset;
-    const createItem = (type, name) => ({
-      name: name || `New ${type.capitalize()}`,
-      type,
+  _createItem(target) {
+    const { treasure, type, lvl } = target.dataset;
+    const createItem = (itemType, name) => ({
+      name: name || `New ${itemType.capitalize()}`,
+      type: itemType,
     });
 
-    // Getting back to main logic
     if (type === "choice") {
-      const choices = header.dataset.choices.split(",");
+      const choices = target.dataset.choices.split(",");
       this._chooseItemType(choices).then((dialogInput) => {
         const itemData = createItem(dialogInput.type, dialogInput.name);
         this.actor.createEmbeddedDocuments("Item", [itemData], {});
       });
-    } else {
-      const itemData = createItem(type);
-      if (treasure) itemData.system = { treasure: true };
-      // when creating a new spell on the character sheet, we need to set the level
-      if (type === "spell") itemData.system = lvl ? { lvl } : { lvl: 1 };
-      return this.actor.createEmbeddedDocuments("Item", [itemData], {});
-    }
-  }
-
-  async _updateItemQuantity(event) {
-    event.preventDefault();
-    const item = this._getItemFromActor(event);
-
-    if (event.target.dataset.field === "value") {
-      return item.update({
-        "system.quantity.value": Number.parseInt(event.target.value, 10),
-      });
-    }
-    if (event.target.dataset.field === "max") {
-      return item.update({
-        "system.quantity.max": Number.parseInt(event.target.value, 10),
-      });
-    }
-  }
-
-  // Override to set resizable initial size
-  // eslint-disable-next-line no-underscore-dangle
-  async _renderInner(...args) {
-    const html = await super._renderInner(...args);
-    this.form = html[0];
-
-    // Resize resizable classes
-    const resizable = html.find(".resizable");
-    if (resizable.length === 0) {
       return;
     }
-    resizable.each((_, el) => {
-      const heightDelta = this.position.height - this.options.height;
-      el.style.height = `${heightDelta + Number.parseInt(el.dataset.baseSize, 10)}px`;
-    });
-    return html;
+
+    const itemData = createItem(type);
+    if (treasure) itemData.system = { treasure: true };
+    if (type === "spell") itemData.system = lvl ? { lvl } : { lvl: 1 };
+    return this.actor.createEmbeddedDocuments("Item", [itemData], {});
   }
 
-  // eslint-disable-next-line no-underscore-dangle
-  async _onResize(event) {
-    // eslint-disable-next-line no-underscore-dangle
-    super._onResize(event);
+  async _createDroppedItems(items) {
+    const data = items.map((item) => {
+      const source = item.inCompendium
+        ? game.items.fromCompendium(item, { clearFolder: true, keepId: false })
+        : item.toObject();
+      source.system = { ...source.system, containerId: "" };
+      if (source.type === "container") source.system.itemIds = [];
+      return source;
+    });
+    return this.actor.createEmbeddedDocuments("Item", data);
+  }
 
-    const html = $(this.form);
-    const resizable = html.find(".resizable");
-    if (resizable.length === 0) {
-      return;
+  async _onDropFolder(_event, folder) {
+    if (!this.actor.isOwner || folder.type !== "Item") return null;
+
+    const entries = [...folder.contents];
+    for (const subfolder of folder.getSubfolders(true)) entries.push(...subfolder.contents);
+
+    const items = await Promise.all(entries.map((entry) => fromUuid(entry.uuid)));
+    await this._createDroppedItems(items.filter(Boolean));
+    return folder;
+  }
+
+  async _onDropItem(event, item) {
+    if (!this.actor.isOwner) return null;
+
+    const targetId = event.target.closest(".item")?.dataset?.itemId;
+    if (item.id === targetId) return null;
+
+    const targetItem = targetId ? this.actor.items.get(targetId) : undefined;
+    const targetIsContainer = targetItem?.type === "container";
+    const exists = this.actor.items.has(item.id);
+    const sourceContainer = this.actor.items.get(item.system.containerId);
+
+    if (!exists && !targetIsContainer) {
+      const [created] = await this._createDroppedItems([item]);
+      return created ?? null;
     }
-    // Resize divs
-    resizable.each((_, el) => {
-      const heightDelta = this.position.height - this.options.height;
-      el.style.height = `${heightDelta + Number.parseInt(el.dataset.baseSize, 10)}px`;
-    });
-    // Resize editors
-    const editors = html.find(".editor");
-    editors.each((_id, editor) => {
-      const container = editor.closest(".resizable-editor");
-      if (container) {
-        const heightDelta = this.position.height - this.options.height;
-        editor.style.height = `${heightDelta + Number.parseInt(container.dataset.editorSize, 10)}px`;
-      }
-    });
+    if (sourceContainer) return this._onContainerItemRemove(item, sourceContainer);
+    if (targetIsContainer) return this._onContainerItemAdd(item, targetItem);
+
+    const sorted = await this._onSortItem(event, item);
+    return sorted?.length ? item : null;
   }
 
-  // eslint-disable-next-line no-underscore-dangle
-  _onConfigureActor(event) {
-    event.preventDefault();
+  async _onContainerItemRemove(item, container) {
+    const newList = container.system.itemIds.filter((id) => id !== item.id);
+    const itemObj = this.actor.items.get(item.id);
+    await container.update({ system: { itemIds: newList } });
+    await itemObj.update({ system: { containerId: "" } });
+    return itemObj;
+  }
+
+  async _onContainerItemAdd(item, target) {
+    const alreadyExistsInActor = target.parent.items.has(item.id);
+    let latestItem = item;
+    if (!alreadyExistsInActor) {
+      [latestItem] = await this._createDroppedItems([item]);
+    }
+    if (!latestItem) return null;
+
+    if (!target.system.itemIds.includes(latestItem.id)) {
+      const newList = [...target.system.itemIds, latestItem.id];
+      await target.update({ system: { itemIds: newList } });
+      await latestItem.update({ system: { containerId: target.id, equipped: false } });
+    }
+    return latestItem;
+  }
+
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onConfigureActor() {
     OseEntityTweaks.open(this.actor, {
       position: {
         top: this.position.top + 40,
@@ -554,109 +421,114 @@ export default class OseActorSheet extends foundry.appv1.sheets.ActorSheet {
     });
   }
 
-  /**
-   * Extend and override the sheet header buttons
-   *
-   * @override
-   */
-  _getHeaderButtons() {
-    let buttons = super._getHeaderButtons();
-
-    // Token Configuration
-    const canConfigure = game.user.isGM || this.actor.isOwner;
-    if (this.options.editable && canConfigure) {
-      buttons = [
-        {
-          label: game.i18n.localize("OSE.dialog.tweaks"),
-          class: "configure-actor",
-          icon: "fas fa-code",
-          onclick: (event) => this._onConfigureActor(event),
-        },
-        ...buttons,
-      ];
-    }
-    return buttons;
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onToggleCategory(event, target) {
+    event.preventDefault();
+    this._toggleItemCategory(target);
   }
 
-  activateListeners(html) {
-    super.activateListeners(html);
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onToggleContainedItems(event, target) {
+    event.preventDefault();
+    this._toggleContainedItems(target);
+  }
 
-    // Attributes
-    html.find(".saving-throw .attribute-name a").click((event) => {
-      this._rollSave(event);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onToggleItemSummary(event, target) {
+    event.preventDefault();
+    this._toggleItemSummary(target);
+  }
 
-    html.find(".attack a").click((event) => {
-      this._rollAttack(event);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onShowItem(_event, target) {
+    return this._getItemFromTarget(target)?.show();
+  }
 
-    html.find(".hit-dice .attribute-name").click((event) => {
-      this.actor.rollHitDice({ event });
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onEditItem(_event, target) {
+    return this._getItemFromTarget(target)?.sheet?.render({ force: true });
+  }
 
-    // Items (Abilities, Inventory and Spells)
-    html.find(".item-rollable .item-image").click(async (event) => {
-      this._rollAbility(event);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onDeleteItem(_event, target) {
+    const item = this._getItemFromTarget(target);
+    if (item) return this._promptRemoveItemFromActor(item);
+  }
 
-    html.find(".inventory .item-category-title").click((event) => {
-      this._toggleItemCategory(event);
-    });
-    html.find(".inventory .item-category-title input").click((event) => {
-      event.stopPropagation();
-    });
-    html.find(".inventory .category-caret").click((event) => {
-      this._toggleContainedItems(event);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onCreateItem(event, target) {
+    event.preventDefault();
+    return this._createItem(target);
+  }
 
-    html.find(".item-name").click((event) => {
-      this._toggleItemSummary(event);
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onConsumeUse(_event, target) {
+    return this._changeConsumableQuantity(target, -1);
+  }
+
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRestoreUse(_event, target) {
+    return this._changeConsumableQuantity(target, 1);
+  }
+
+  _changeConsumableQuantity(target, delta) {
+    const item = this._getItemFromTarget(target);
+    if (!item) return null;
+    return item.update({
+      "system.quantity.value": item.system.quantity.value + delta,
     });
+  }
 
-    html.find(".item-controls .item-show").click(async (event) => {
-      this._displayItemInChat(event);
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static async _onResetSpells(_event, target) {
+    const spellsContainer = target.closest(".inventory.spells");
+    const updates = [];
+
+    for (const el of spellsContainer.querySelectorAll(".item-entry")) {
+      const item = this.actor.items.get(el.dataset.itemId);
+      if (item?.system) {
+        updates.push({ _id: item.id, "system.cast": item.system.memorized });
+      }
+    }
+
+    if (updates.length > 0) await this.actor.updateEmbeddedDocuments("Item", updates);
+  }
+
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static async _onRollItem(event, target) {
+    if (!target.closest(".item-rollable")) return;
+    const item = this._getItemFromTarget(target);
+    if (!item) return;
+
+    if (item.type === "weapon") {
+      if (this.actor.type === "monster") {
+        await item.update({ "system.counter.value": item.system.counter.value - 1 });
+      }
+      item.rollWeapon({ skipDialog: skipRollDialogCheck(event) });
+    } else if (item.type === "spell") {
+      await item.spendSpell({ skipDialog: skipRollDialogCheck(event) });
+    } else {
+      await item.rollFormula({ skipDialog: skipRollDialogCheck(event) });
+    }
+  }
+
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollSave(event, target) {
+    const { save } = target.closest("[data-save]")?.dataset ?? {};
+    if (save) this.actor.rollSave(save, { event });
+  }
+
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollAttack(event, target) {
+    const { attack } = target.closest("[data-attack]")?.dataset ?? {};
+    this.actor.targetAttack({ roll: {} }, attack, {
+      type: attack,
+      skipDialog: skipRollDialogCheck(event),
     });
+  }
 
-    // Everything below here is only needed if the sheet is editable
-    if (!this.options.editable) return;
-
-    // Item Management
-    html.find(".item-create").click((event) => {
-      // eslint-disable-next-line no-underscore-dangle
-      this._createItem(event);
-    });
-
-    html.find(".item-edit").click((event) => {
-      const item = this._getItemFromActor(event);
-      item.sheet.render(true);
-    });
-
-    html.find(".item-delete").click((event) => {
-      const item = this._getItemFromActor(event);
-      this._promptRemoveItemFromActor(item);
-    });
-
-    html
-      .find(".quantity input")
-      .click((ev) => ev.target.select())
-      .change(this._updateItemQuantity.bind(this));
-
-    // Consumables
-    html.find(".consumable-counter .full-mark").click((event) => {
-      this._useConsumable(event, true);
-    });
-    html.find(".consumable-counter .empty-mark").click((event) => {
-      this._useConsumable(event, false);
-    });
-
-    // Spells
-    html
-      .find(".memorize input")
-      .click((event) => event.target.select())
-      .change(this._onSpellChange.bind(this));
-
-    html.find(".spells .item-reset[data-action='reset-spells']").click((event) => {
-      this._resetSpells(event);
-    });
+  // biome-ignore lint/complexity/noThisInStatic: V2 actions bind `this` to the application instance.
+  static _onRollHitDice(event) {
+    this.actor.rollHitDice({ event });
   }
 }
