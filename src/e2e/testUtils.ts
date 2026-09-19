@@ -36,35 +36,25 @@ export const waitFor = async (predicate: () => boolean, { timeout = 2000, interv
  * @param selector - A CSS selector to look up via `document.querySelector`.
  * @param opts.timeout - Max wait in ms. Default 2000.
  * @param opts.interval - Poll interval in ms. Default 50.
+ * @param opts.root - The node to search within. Default `document`.
  */
 export const waitForElement = async <T extends Element = HTMLElement>(
   selector: string,
-  { timeout = 2000, interval = 50 }: { timeout?: number; interval?: number } = {},
+  { timeout = 2000, interval = 50, root = document }: { timeout?: number; interval?: number; root?: ParentNode } = {},
 ): Promise<T | null> => {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const el = document.querySelector(selector) as T | null;
+    const el = root.querySelector(selector) as T | null;
     if (el) return el;
     await delay(interval);
   }
   return null;
 };
 
-export const openWindows = (className: string) =>
-  Object.values(ui.windows).filter((o) => o.options.classes.includes(className));
-
-export const openDialogs = () => Object.values(ui.windows).filter((o) => o.options.classes.includes("dialog"));
-
 export const openV2AppsByClass = (className: string) =>
   Array.from(foundry.applications.instances.values()).filter((o) => o.options.classes.includes(className));
 
 export const openV2Dialogs = () => openV2AppsByClass("dialog");
-
-export const closeDialogs = async () => {
-  for (const o of openDialogs()) {
-    await o.close();
-  }
-};
 
 export const closeV2Dialogs = async () => {
   for (const o of openV2Dialogs()) {
@@ -72,11 +62,17 @@ export const closeV2Dialogs = async () => {
   }
 };
 
+export const openWindows = openV2AppsByClass;
+
+export const openDialogs = openV2Dialogs;
+
+export const closeDialogs = closeV2Dialogs;
+
 export const closeSheets = async () => {
-  for (const w of openWindows("sheet")) {
-    await w.close();
+  for (const a of openV2AppsByClass("sheet")) {
+    await a.close();
   }
-  waitForInput();
+  await waitForInput();
 };
 
 /**

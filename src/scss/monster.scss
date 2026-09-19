@@ -7,6 +7,9 @@
         text-align: center;
       }
       .check-field {
+        > div:not(.check) {
+          align-self: flex-start;
+        }
         &:hover {
           .check {
             display: block;
@@ -24,6 +27,9 @@
         }
       }
     }
+  }
+  .sheet-tabs .item {
+    flex: 1 1 auto;
   }
   .sheet-body {
     .editor {

@@ -1,3 +1,14 @@
+.application.ose,
+.application.sheet-tweaks,
+.application.combat-set-groups {
+  --font-h1: var(--font-body);
+  --font-h2: var(--font-body);
+  --font-h3: var(--font-body);
+  --font-h4: var(--font-body);
+  --font-h5: var(--font-body);
+  --font-h6: var(--font-body);
+}
+
 .ose .window-content {
   // Utils
   .collapsed {

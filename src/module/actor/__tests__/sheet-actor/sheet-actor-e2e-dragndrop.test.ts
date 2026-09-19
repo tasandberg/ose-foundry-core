@@ -1,22 +1,20 @@
 /**
  * @file Contains tests for dragging and dropping items to and from Actor Sheet.
  */
-// eslint-disable-next-line prettier/prettier
 import type { QuenchMethods } from "../../../../e2e";
 import {
   cleanUpActorsByKey,
   cleanUpCompendium,
   cleanUpWorldItems,
+  closeSheets,
   createActorTestItem,
   createMockActorKey,
   createMockCompendium,
   createWorldTestItem,
   itemTypes,
+  waitFor,
   waitForElement,
-  waitForInput, // eslint-disable-next-line prettier/prettier
 } from "../../../../e2e/testUtils";
-import type OseItem from "../../../item/entity";
-import type OseActor from "../../entity";
 
 export const key = "ose.actor.sheet.e2e.dragndrop";
 export const options = {
@@ -24,304 +22,289 @@ export const options = {
   preSelected: true,
 };
 
-/* --------------------------------------------- */
-/* Types for storing data between tests          */
-/* --------------------------------------------- */
-type DragNDropItem = {
-  item: OseItem | undefined;
-  itemElement: Element | null;
+type TestContext = { timeout: (ms: number) => void };
+
+type SheetUnderTest = {
+  element: HTMLElement;
+  render: (options: object) => Promise<unknown>;
+  changeTab: (tab: string, group: string) => void;
 };
 
-type DragNDropItems = {
-  source: DragNDropItem;
-  target: DragNDropItem;
+const renderSheet = async (actor: { sheet: SheetUnderTest }): Promise<HTMLElement> => {
+  await actor.sheet.render({ force: true });
+  return actor.sheet.element;
 };
 
-type DragNDropDocuments = {
-  actor: StoredDocument<Actor> | undefined;
-  compendium: CompendiumCollection<CompendiumCollection.Metadata> | undefined;
-};
-
-/* --------------------------------------------- */
-/* DOM Manipulation Helper functions             */
-/* --------------------------------------------- */
 const executeDrag = (sourceElement: Element | null) => {
-  const mockDragStartEvent = new DragEvent("dragstart", {
+  const dragStartEvent = new DragEvent("dragstart", {
     dataTransfer: new DataTransfer(),
     bubbles: true,
     cancelable: true,
   });
-  sourceElement?.dispatchEvent(mockDragStartEvent);
-  return mockDragStartEvent;
+  sourceElement?.dispatchEvent(dragStartEvent);
+  return dragStartEvent;
 };
 
-const executeDragNDrop = async (items: DragNDropItems) => {
-  const mockDragStartEvent = new DragEvent("dragstart", {
-    dataTransfer: new DataTransfer(),
-    bubbles: true,
-    cancelable: true,
-  });
-  items.source.itemElement?.dispatchEvent(mockDragStartEvent);
-
-  const mockDropEvent = new DragEvent("drop", {
-    dataTransfer: mockDragStartEvent.dataTransfer,
-    bubbles: true,
-    cancelable: true,
-  });
-  items.target.itemElement?.dispatchEvent(mockDropEvent);
+const executeDragNDrop = (sourceElement: Element | null, targetElement: Element | null) => {
+  const dragStartEvent = executeDrag(sourceElement);
+  targetElement?.dispatchEvent(
+    new DragEvent("drop", {
+      dataTransfer: dragStartEvent.dataTransfer,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 };
 
-export default ({ describe, it, expect, after, beforeEach }: QuenchMethods) => {
+const itemRow = (itemId: string) => `.inventory li.item[data-item-id="${itemId}"]`;
+
+export default ({ describe, it, expect, after, afterEach }: QuenchMethods) => {
   describe("_onDragStart(event)", () => {
-    it("populates dataTransfer correctly", async () => {
-      const actor = (await createMockActorKey("character", {}, key)) as OseActor;
+    it("populates dataTransfer with the dropped document reference", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
       expect(actor).not.undefined;
 
-      await actor.sheet?.render(true);
-
+      const root = await renderSheet(actor);
       const [item] = await createActorTestItem(actor, "weapon");
-      expect(item).not.undefined;
-
-      const itemElement = await waitForElement(`.sheet .inventory li.item[data-item-id="${item?.id}"]`);
+      const itemElement = await waitForElement(itemRow(item.id), { root });
       expect(itemElement).not.null;
 
       const event = executeDrag(itemElement);
       const parsedData = foundry.applications.ux.TextEditor.implementation.getDragEventData(event);
-      expect(Object.keys(parsedData)).contain("item");
+
+      expect(Object.keys(parsedData)).contain("type");
+      expect(Object.keys(parsedData)).contain("uuid");
+      expect(parsedData.type).equal("Item");
+      expect(parsedData.uuid).equal(item.uuid);
     });
 
-    after(async () => {
+    afterEach(async () => {
       await cleanUpActorsByKey(key);
+      await closeSheets();
     });
   });
 
-  // This is tested in the combined _onDragStart & _onDrop test
-  describe("_onDropItem(event, data)", () => {});
-
-  describe("_onDragStart(event, data) & _onDrop(event, data) - Containers", () => {
-    /* --------------------------------------------- */
-    /* Check Test Helper functions                   */
-    /* --------------------------------------------- */
-    const dragNDropSanityChecks = (documents: DragNDropDocuments, items: DragNDropItems) => {
-      // Check Actor constructed properly
-      expect(documents.actor).not.undefined;
-      expect(documents.actor?.documentName).equal("Actor");
-
-      // Check Compendium constructed properly
-      expect(documents.compendium).not.undefined;
-      expect(documents.compendium?.documentName).equal("Item");
-
-      // Check that the target constructed properly
-      expect(items.target.item).not.undefined;
-      expect(items.target.item?.documentName).equal("Item");
-      expect(items.target.item?.name).equal("TargetContainer");
-
-      // Check the target DOM is stored correctly
-      expect(items.target.itemElement).not.null;
-      expect(items.target.itemElement?.constructor.name).equal("HTMLLIElement");
-    };
-
-    const dragNDropCasePreflightCheck = (sourceItemName: string, items: DragNDropItems) => {
-      expect(items.source.item).not.undefined;
-      expect(items.source.item?.documentName).equal("Item");
-      expect(items.source.item?.name).equal(sourceItemName);
-
-      expect(items.source.itemElement).not.null;
-      expect(items.source.itemElement?.constructor.name).equal("HTMLLIElement");
-
-      // Check source and target data
-      expect(items.source.item?.system.containerId).equal("");
-      expect(items.target.item?.system.itemIds.length).equal(0);
-    };
-
-    const dragNDropCasePostflightCheck = (documents: DragNDropDocuments, items: DragNDropItems) => {
-      // Check item data
-      expect(items.target.item?.system.itemIds.length).equal(1);
-      expect(items.target.item?.system.itemIds).contain(items.source.item?.id);
-      expect(items.source.item?.system.containerId).equal(items.target.item?.id);
-
-      // Check getters
-      const getter = items.source.item?.type === "armor" ? items.source.item?.type : `${items.source.item?.type}s`;
-      const amount = getter === "containers" ? 1 : 0;
-      expect(documents.actor?.system[getter].length).equal(amount);
-    };
-
-    /* --------------------------------------------- */
-    /* Specific cases                                */
-    /* --------------------------------------------- */
-    // Issue#357
-    it("Issue#357 Dragging container onto itself should retain container in inventory", async () => {
-      const items: DragNDropItems = {
-        source: {} as DragNDropItem,
-        target: {} as DragNDropItem,
-      } as DragNDropItems;
-
-      // Setup actor & items
+  describe("_onDropItem(event, item)", () => {
+    it("creates a world item on the actor when it is dropped outside a container", async function (this: TestContext) {
+      this.timeout(5000);
       const actor = await createMockActorKey("character", {}, key);
-      [items.target.item] = await createActorTestItem(actor, "container", "TargetContainer");
-      [items.source.item] = await createActorTestItem(actor, "weapon");
+      const root = await renderSheet(actor);
+      const worldItem = await createWorldTestItem("weapon");
 
-      // Render UI elements
-      actor?.sheet?.render(true);
-
-      items.source.itemElement = await waitForElement(
-        `.sheet .inventory li.item[data-item-id="${items.source?.item?.id}"]`,
-      );
-      items.target.itemElement = await waitForElement(
-        `.sheet .inventory li.item[data-item-id="${items.target?.item?.id}"]`,
+      const created = await actor?.sheet?._onDropItem(
+        { target: root, preventDefault: () => {}, dataTransfer: new DataTransfer() },
+        worldItem,
       );
 
-      // Execute drag'n'drop of stored item
-      dragNDropCasePreflightCheck("New Actor Test Weapon", items);
-      await executeDragNDrop(items);
-      await waitForInput();
-
-      // Check items
-      expect(items.target.item?.system.itemIds.length).equal(1);
-      expect(items.target.item?.system.itemIds).contain(items.source.item?.id);
-      expect(items.source.item?.system.containerId).equal(items.target.item?.id);
-
-      // Re-form the source item to use the target container
-      items.source.itemElement = items.target.itemElement;
-      items.source.item = items.target.item;
-
-      // Execute drag'n'drop again
-      await executeDragNDrop(items);
-      await waitForInput();
-
-      // Verify that the target container is still present
-      const finalElement = await waitForElement(`.sheet .inventory li.item[data-item-id="${items.target?.item?.id}"]`);
-      expect(finalElement).not.null;
+      expect(created).not.null;
+      expect(created.name).equal(worldItem?.name);
+      expect(actor?.items.getName(worldItem?.name)).not.undefined;
     });
 
-    /* --------------------------------------------- */
-    /* Loop over item types                          */
-    /* --------------------------------------------- */
-    for (const itemType of itemTypes) {
-      // Skip items that can't be put in a container
-      if (itemType === "spell") continue;
-      if (itemType === "ability") continue;
+    it("returns null when an item is dropped onto itself", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
+      const [item] = await createActorTestItem(actor, "weapon");
+      const root = await renderSheet(actor);
 
-      // Initiate storage of actor, items, and DOM elements
-      const documents: DragNDropDocuments = {} as DragNDropDocuments;
-      const items: DragNDropItems = {
-        source: {} as DragNDropItem,
-        target: {} as DragNDropItem,
-      } as DragNDropItems;
+      const itemElement = await waitForElement(itemRow(item.id), { root });
+      const dropped = await actor?.sheet?._onDropItem(
+        { target: itemElement, preventDefault: () => {}, dataTransfer: new DataTransfer() },
+        item,
+      );
+
+      expect(dropped).is.null;
+      expect(actor?.items.size).equal(1);
+    });
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await cleanUpWorldItems();
+      await closeSheets();
+    });
+  });
+
+  describe("_onSortItem(event, item)", () => {
+    it("dropping an item onto a sibling reorders it", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
+      const [first] = await createActorTestItem(actor, "weapon", "First Weapon");
+      const [second] = await createActorTestItem(actor, "weapon", "Second Weapon");
+      const root = await renderSheet(actor);
+
+      const firstElement = await waitForElement(itemRow(first.id), { root });
+      const secondElement = await waitForElement(itemRow(second.id), { root });
+      expect(firstElement).not.null;
+      expect(secondElement).not.null;
+
+      executeDragNDrop(firstElement, secondElement);
+      await waitFor(() => first.sort > second.sort);
+
+      expect(first.sort).is.greaterThan(second.sort);
+    });
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await closeSheets();
+    });
+  });
+
+  describe("_onDropItem(event, item) - Containers", () => {
+    const sanityChecks = (
+      actor: unknown,
+      compendium: unknown,
+      container: unknown,
+      containerElement: Element | null,
+    ) => {
+      const owner = actor as { documentName: string };
+      const pack = compendium as { documentName: string };
+      const target = container as { documentName: string; name: string };
+
+      expect(owner).not.undefined;
+      expect(owner.documentName).equal("Actor");
+      expect(pack).not.undefined;
+      expect(pack.documentName).equal("Item");
+      expect(target).not.undefined;
+      expect(target.documentName).equal("Item");
+      expect(target.name).equal("TargetContainer");
+      expect(containerElement).not.null;
+      expect(containerElement?.constructor.name).equal("HTMLLIElement");
+    };
+
+    const preflightCheck = (sourceItemName: string, source: unknown, container: unknown) => {
+      const sourceItem = source as { documentName: string; name: string; system: { containerId: string } };
+      const target = container as { system: { itemIds: string[] } };
+
+      expect(sourceItem).not.undefined;
+      expect(sourceItem.documentName).equal("Item");
+      expect(sourceItem.name).equal(sourceItemName);
+      expect(sourceItem.system.containerId).equal("");
+      expect(target.system.itemIds.length).equal(0);
+    };
+
+    const postflightCheck = (actor: unknown, source: unknown, container: unknown) => {
+      const owner = actor as { system: Record<string, unknown[]> };
+      const sourceItem = source as { id: string; type: string; system: { containerId: string } };
+      const target = container as { id: string; system: { itemIds: string[] } };
+
+      expect(target.system.itemIds.length).equal(1);
+      expect(target.system.itemIds).contain(sourceItem.id);
+      expect(sourceItem.system.containerId).equal(target.id);
+
+      const getter = sourceItem.type === "armor" ? sourceItem.type : `${sourceItem.type}s`;
+      expect(owner.system[getter]?.length).equal(getter === "containers" ? 1 : 0);
+    };
+
+    const setUpSheetAndCompendium = async () => {
+      await cleanUpActorsByKey(key);
+      await cleanUpCompendium();
+      await cleanUpWorldItems();
+
+      const actor = await createMockActorKey("character", {}, key);
+      const compendium = await createMockCompendium("Item");
+      const [container] = await createActorTestItem(actor, "container", "TargetContainer");
+
+      const root = await renderSheet(actor);
+      compendium?.render(true);
+      actor.sheet.changeTab("inventory", "primary");
+
+      const containerElement = await waitForElement(itemRow(container.id), { root });
+      return { actor, compendium, container, root, containerElement };
+    };
+
+    it("Issue#357 Dragging container onto itself should retain container in inventory", async function (this: TestContext) {
+      this.timeout(5000);
+      const actor = await createMockActorKey("character", {}, key);
+      const [container] = await createActorTestItem(actor, "container", "TargetContainer");
+      const [weapon] = await createActorTestItem(actor, "weapon");
+      const root = await renderSheet(actor);
+
+      const weaponElement = await waitForElement(itemRow(weapon.id), { root });
+      const containerElement = await waitForElement(itemRow(container.id), { root });
+
+      preflightCheck("New Actor Test Weapon", weapon, container);
+      executeDragNDrop(weaponElement, containerElement);
+      await waitFor(() => container.system.itemIds.length === 1);
+
+      expect(container.system.itemIds.length).equal(1);
+      expect(container.system.itemIds).contain(weapon.id);
+      expect(weapon.system.containerId).equal(container.id);
+
+      const refreshedContainer = await waitForElement(itemRow(container.id), { root });
+      executeDragNDrop(refreshedContainer, refreshedContainer);
+      await waitFor(() => !!actor?.items.get(container.id));
+
+      expect(await waitForElement(itemRow(container.id), { root })).not.null;
+    });
+
+    for (const itemType of itemTypes) {
+      if (itemType === "spell" || itemType === "ability") continue;
 
       describe(`manipulating ${itemType} item type`, () => {
-        beforeEach(async () => {
-          await cleanUpActorsByKey(key);
-          await cleanUpCompendium();
-          await cleanUpWorldItems();
-          await waitForInput(); // Wait for cleanup to complete
+        it(`drag ${itemType} from actor sheet into a container in a character sheet`, async function (this: TestContext) {
+          this.timeout(5000);
+          const { actor, compendium, container, root, containerElement } = await setUpSheetAndCompendium();
+          sanityChecks(actor, compendium, container, containerElement);
 
-          // Set up actor & compendium
-          documents.actor = await createMockActorKey("character", {}, key);
-          documents.compendium = await createMockCompendium("Item");
+          const [source] = await createActorTestItem(actor, itemType);
+          const sourceElement = await waitForElement(itemRow(source.id), { root });
+          const dropTarget = await waitForElement(itemRow(container.id), { root });
 
-          // Create target container
-          [items.target.item] = await createActorTestItem(documents.actor, "container", "TargetContainer");
+          preflightCheck(source.name, source, container);
+          executeDragNDrop(sourceElement, dropTarget);
+          await waitFor(() => container.system.itemIds.length === 1);
 
-          // Render UI elements
-          documents.actor?.sheet?.render(true);
-          documents.compendium?.render(true);
-
-          const inventoryTab = await waitForElement<HTMLElement>(
-            `#OseActorSheetCharacter-Actor-${documents.actor.id} nav.sheet-tabs a[data-tab="inventory"]`,
-          );
-          inventoryTab?.click();
-
-          items.target.itemElement = await waitForElement(
-            `#OseActorSheetCharacter-Actor-${documents.actor.id} .inventory li.item[data-item-id="${items.target.item?.id}"]`,
-          );
+          postflightCheck(actor, source, container);
         });
 
-        it(`drag ${itemType} from actor sheet into a container in a character sheet`, async () => {
-          dragNDropSanityChecks(documents, items);
+        it(`drag ${itemType} from item sidebar into a container in a character sheet`, async function (this: TestContext) {
+          this.timeout(5000);
+          const { actor, compendium, container, root, containerElement } = await setUpSheetAndCompendium();
+          sanityChecks(actor, compendium, container, containerElement);
 
-          // Create item in actor sheet
-          [items.source.item] = await createActorTestItem(documents.actor, itemType);
+          const worldItem = await createWorldTestItem(itemType);
+          const sourceElement = await waitForElement(`#items li.item[data-entry-id="${worldItem?.id}"]`);
+          const dropTarget = await waitForElement(itemRow(container.id), { root });
 
-          items.source.itemElement = await waitForElement(
-            `#OseActorSheetCharacter-Actor-${documents.actor.id} .inventory li.item[data-item-id="${items.source.item?.id}"]`,
-          );
+          preflightCheck(worldItem?.name, worldItem, container);
+          executeDragNDrop(sourceElement, dropTarget);
+          await waitFor(() => container.system.itemIds.length === 1);
 
-          if (!items.target.itemElement?.isConnected) {
-            // Reallocate the target item element after the re-render.
-            items.target.itemElement = await waitForElement(
-              `#OseActorSheetCharacter-Actor-${documents.actor.id} .inventory li.item[data-item-id="${items.target.item?.id}"]`,
-            );
-          }
-
-          // Perform pre-flight checks
-          const sourceItemName = `New Actor Test ${itemType.capitalize()}`;
-          dragNDropCasePreflightCheck(sourceItemName, items);
-
-          // Drag N Drop
-          await executeDragNDrop(items);
-          await waitForInput();
-
-          // Perform post-flight checks
-          dragNDropCasePostflightCheck(documents, items);
+          postflightCheck(actor, actor?.items.getName(worldItem?.name), container);
         });
 
-        it(`drag ${itemType} from item sidebar into a container in a character sheet`, async () => {
-          dragNDropSanityChecks(documents, items);
+        it(`drag ${itemType} from compendium into a container in a character sheet`, async function (this: TestContext) {
+          this.timeout(5000);
+          const { actor, compendium, container, root, containerElement } = await setUpSheetAndCompendium();
+          sanityChecks(actor, compendium, container, containerElement);
 
-          // Create item in sidebar
-          items.source.item = (await createWorldTestItem(itemType)) as OseItem;
+          const worldItem = await createWorldTestItem(itemType);
+          const packItem = await compendium?.importDocument(worldItem);
+          const sourceElement = await waitForElement(`.compendium-directory li.item[data-entry-id="${packItem?.id}"]`);
+          const dropTarget = await waitForElement(itemRow(container.id), { root });
 
-          items.source.itemElement = await waitForElement(`#items li.item[data-entry-id="${items.source.item?.id}"]`);
+          preflightCheck(packItem?.name, packItem, container);
+          executeDragNDrop(sourceElement, dropTarget);
+          await waitFor(() => container.system.itemIds.length === 1);
 
-          // Perform pre-flight checks
-          const sourceItemName = `New World Test ${itemType.capitalize()}`;
-          dragNDropCasePreflightCheck(sourceItemName, items);
-
-          // Drag N Drop
-          await executeDragNDrop(items);
-          await waitForInput();
-
-          // Store new item as it recreates in the character sheet
-          items.source.item = documents.actor?.items.getName(items.source.item?.name) as OseItem;
-
-          // Perform post-flight checks
-          dragNDropCasePostflightCheck(documents, items);
-        });
-
-        it(`drag ${itemType} from compendium into a container in a character sheet`, async () => {
-          dragNDropSanityChecks(documents, items);
-
-          // Create item in compendium
-          const worldItem = (await createWorldTestItem(itemType)) as OseItem;
-          items.source.item = await documents.compendium?.importDocument(worldItem);
-
-          items.source.itemElement = await waitForElement(
-            `.compendium-directory li.item[data-entry-id="${items.source.item?.id}"]`,
-          );
-
-          // Perform pre-flight checks
-          const sourceItemName = `New World Test ${itemType.capitalize()}`;
-          dragNDropCasePreflightCheck(sourceItemName, items);
-
-          // Drag N Drop
-          await executeDragNDrop(items);
-          await waitForInput();
-
-          // Store new item as it recreates in the character sheet
-          items.source.item = documents.actor?.items.getName(items.source.item?.name) as OseItem;
-
-          // Perform post-flight checks
-          dragNDropCasePostflightCheck(documents, items);
-        });
-
-        after(async () => {
-          await cleanUpActorsByKey(key);
-          await cleanUpCompendium();
-          await cleanUpWorldItems();
-          await waitForInput(); // Wait for cleanup to complete
+          postflightCheck(actor, actor?.items.getName(packItem?.name), container);
         });
       });
     }
+
+    afterEach(async () => {
+      await cleanUpActorsByKey(key);
+      await cleanUpCompendium();
+      await cleanUpWorldItems();
+      await closeSheets();
+    });
+  });
+
+  after(async () => {
+    await cleanUpActorsByKey(key);
+    await cleanUpCompendium();
+    await cleanUpWorldItems();
+    await closeSheets();
   });
 };

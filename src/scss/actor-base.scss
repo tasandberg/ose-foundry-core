@@ -10,7 +10,42 @@
 }
 
 .ose.sheet.actor {
-  $detailsHeight: 44px;
+  $detailsHeight: 50px;
+  overflow: visible;
+  .window-content {
+    overflow: visible;
+    min-height: 0;
+    background: url("/ui/parchment.jpg") repeat;
+    border-radius: 0 0 6px 6px;
+    > .sheet-header {
+      flex: 0 0 auto;
+      h1 {
+        font-size: 2em;
+        font-weight: 400;
+        margin-bottom: 0;
+      }
+    }
+    > .tab.sheet-body {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
+  }
+  .flexrow {
+    align-items: initial;
+  }
+  .attribute-name,
+  .box-title,
+  .item-name,
+  .panel-title h4 {
+    font-size: 1em;
+  }
+  .description prose-mirror {
+    --min-height: 130px;
+  }
+  .resizable-editor prose-mirror {
+    --min-height: 300px;
+  }
   .blinking {
     font-weight: bold;
     animation: 0.8s ease-in 1s infinite alternate notify;
@@ -58,6 +93,8 @@
   }
   .profile {
     flex: 0 0 145px;
+    height: 140px;
+    position: relative;
     .profile-img {
       border: 0;
       height: 140px;
@@ -82,6 +119,9 @@
       line-height: 30px;
       color: $colorOlive;
       position: relative;
+      input {
+        display: block;
+      }
       label {
         line-height: 10px;
         position: absolute;
@@ -102,7 +142,7 @@
     padding: 0; /* tab padding fix */
     position: absolute;
     transform: rotate(90deg);
-    top: 365px;
+    top: calc(50% - 9px);
     right: -169px;
     width: 320px;
     border-top: none;
@@ -111,7 +151,8 @@
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    justify-content: space-around;
+    justify-content: center;
+    gap: 0;
     .item {
       max-height: 35px; /* tab padding fix */
       padding: 1px 10px 0;
@@ -122,7 +163,7 @@
       border-top-right-radius: 4px;
       border-top-left-radius: 80px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.15);
-      box-shadow: 0 0 6px 1px $colorDark;
+      box-shadow: 0 -4px 5px -1px $colorDark;
       font-size: var(--font-size-12);
       filter: brightness(0.9);
       &.active {
@@ -131,14 +172,11 @@
         font-weight: bold;
         text-shadow: none;
         margin-bottom: -1px;
+        border-bottom: none;
       }
     }
   }
   .sheet-body {
-    height: calc(100% - 140px);
-    .tab {
-      height: 100%;
-    }
     .attributes {
       list-style: none;
       margin: 0;

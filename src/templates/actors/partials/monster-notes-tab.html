@@ -1,0 +1,14 @@
+<div class="tab sheet-body {{tab.cssClass}}" data-group="primary" data-tab="notes">
+  <div class="inventory">
+    <div class="item-category-title">{{localize "OSE.category.notes"}}</div>
+    <div class="resizable-editor">
+      <prose-mirror
+        name="system.details.biography"
+        toggled="true"
+        button="true"
+        value="{{system.details.biography}}"
+        >{{{enrichedBiography}}}</prose-mirror
+      >
+    </div>
+  </div>
+</div>
