@@ -45,6 +45,7 @@ export const RenderItemDirectory = async (object) => {
       `${OSE.systemPath()}/templates/actors/partials/item-auto-tags-partial.html`,
       { tags: foundryDocument.system.autoTags || [] },
     );
+    item.querySelector(":scope > .tag-list")?.remove();
     item.insertAdjacentHTML("beforeend", tagsHtml);
   }
 };

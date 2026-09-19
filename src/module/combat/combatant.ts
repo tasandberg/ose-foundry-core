@@ -37,14 +37,6 @@ export class OSECombatant extends Combatant {
     return new Roll(term, rollData);
   }
 
-  async getData(options = {}) {
-    const context = await super.getData(options);
-    return foundry.utils.mergeObject(context, {
-      slow: this.isSlow,
-      casting: this.isCasting,
-    });
-  }
-
   /**
    * Assign this combatant to a group.
    *

@@ -118,14 +118,12 @@ export async function rollTreasure(table, options = {}) {
   };
 
   // Animation
-  if (options.event) {
-    const results = $(options.event.currentTarget.parentElement).prev().find(".table-result");
-    results.each((_, item) => {
-      item.classList.remove("active");
-      if (data.treasure[item.dataset.resultId]) {
-        item.classList.add("active");
-      }
-    });
+  const sheet = options.event?.target?.closest(".roll-table-sheet");
+  if (sheet) {
+    const results = sheet.querySelectorAll("table[data-results] tbody tr[data-result-id]");
+    for (const row of results) {
+      row.classList.toggle("active", Boolean(data.treasure[row.dataset.resultId]));
+    }
   }
 
   await new Promise((resolve) => requestAnimationFrame(resolve));

@@ -155,7 +155,7 @@ Hooks.once("ready", async () => {
 });
 
 // Party sheet control
-Hooks.on("activateActorDirectory", party.addControl);
+Hooks.on("renderActorDirectory", party.addControl);
 
 /**
  * @param {Application} app
@@ -169,7 +169,6 @@ Hooks.on("renderSettings", async (_app, html) => {
 });
 
 Hooks.on("renderChatLog", (_app, html) => OseItem.chatListeners(html));
-Hooks.on("getChatLogEntryContext", chat.addChatMessageContextOptions);
 Hooks.on("getChatMessageContextOptions", chat.addChatMessageContextOptions);
 Hooks.on("renderChatMessageHTML", chat.addChatMessageButtons);
 Hooks.on("renderRollTableSheet", treasure.augmentTable);
@@ -275,7 +274,7 @@ Hooks.on("renderActorSheet", (app, html) => {
 });
 
 Hooks.on("renderCompendium", renderList.RenderCompendium);
-Hooks.on("activateItemDirectory", renderList.RenderItemDirectory);
+Hooks.on("renderItemDirectory", renderList.RenderItemDirectory);
 
 Hooks.on("OSE.Party.showSheet", OsePartySheet.showPartySheet);
 Hooks.once("initializeDynamicTokenRingConfig", initializeTokenRing);
