@@ -149,6 +149,7 @@
     flex-direction: row;
     flex-wrap: nowrap;
     justify-content: center;
+    gap: 0;
     .item {
       max-height: 35px; /* tab padding fix */
       padding: 1px 10px 0;
